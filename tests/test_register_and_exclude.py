@@ -28,7 +28,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         # Create a sandbox directory structure for simulating QNAP mounts
         self.test_dir = tempfile.mkdtemp()
         self.dropzone_path = os.path.join(self.test_dir, "Dropzone")
-        self.excluded_path = os.path.join(self.test_dir, "Excluded")
+        self.excluded_path = os.path.join(self.test_dir, ".Excluded")
         
         os.makedirs(self.dropzone_path, exist_ok=True)
         os.makedirs(self.excluded_path, exist_ok=True)
@@ -132,13 +132,14 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         # Check C: The excluded duplicate must vanish from the raw Dropzone space
         self.assertFalse(os.path.exists(duplicate_file_path))
 
-        # Check D: The duplicate file structure tree must be preserved inside the Excluded folder
-        # We search inside Excluded/ for a timestamped folder containing our nested directories
-        timestamped_folders = os.listdir(self.excluded_path)
+        # Check D: The duplicate file structure tree must be preserved inside the .Excluded folder
+        # We search inside .Excluded/Dropzone/ for a timestamped folder containing our nested directories
+        dropzone_excluded_path = os.path.join(self.excluded_path, "Dropzone")
+        timestamped_folders = os.listdir(dropzone_excluded_path)
         self.assertEqual(len(timestamped_folders), 1, "A timestamped batch folder should have been created.")
         
         expected_moved_location = os.path.join(
-            self.excluded_path, timestamped_folders[0], "abc", "bcd", "def.txt"
+            dropzone_excluded_path, timestamped_folders[0], "abc", "bcd", "def.txt"
         )
         self.assertTrue(os.path.exists(expected_moved_location), "The file structure layout was broken during movement.")
 
