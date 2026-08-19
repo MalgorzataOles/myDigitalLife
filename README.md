@@ -47,7 +47,7 @@ Step 3: [Curation Start] ──────> (start_curation.py) ───> Gene
 Step 4: [Additions Check] ─────> (append_to_curation.py) ──> Appends late Finder drags to manifest
                                      │
 Step 5: [Finalization] ────────> (finalize_curation.py) ──> Archives Dropzone raw targets to [Cleared/]
-                                                           Logs unique keepers to root exclude.sha256
+                                                           Logs unique keepers to Dropzone exclude.sha256
 ```
 
 ## 💻 Script Execution & Commands
