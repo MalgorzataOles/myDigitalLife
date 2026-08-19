@@ -92,9 +92,9 @@ def main():
     exclusion_set = load_checksum_list(exclusion_list_path, is_local_registry=False)
     local_tracked_paths = load_checksum_list(local_db_path, is_local_registry=True)
 
-    # Dynamic creation of the timestamped isolation folder inside Excluded/
+    # Dynamic creation of the timestamped isolation folder inside .Excluded/<source_folder>/
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    current_batch_excluded_dir = os.path.join(excluded_root_dir, timestamp)
+    current_batch_excluded_dir = os.path.join(excluded_root_dir, folder_name, timestamp)
 
     # Clean, literal startup dashboard
     print("\n" + "~" * 60)
@@ -177,11 +177,24 @@ def main():
     print("\n" + "=" * 70)
     print(" PROCESSING RUN COMPLETE")
     print("=" * 70)
-    print(f" New registered     : {len(new_entries)}")
-    print(f" New excluded       : {len(excluded_files_log)}")
+    print(f" Files registered     : {len(new_entries)}")
+    print(f" Files excluded       : {len(excluded_files_log)}")
     if excluded_files_log:
         print(f" 📂 Moved to folder : {current_batch_excluded_dir}")
-    print("=" * 70 + "\n")
+        print("\n" + "─" * 70)
+        print("  ⚠️  ACTION REQUIRED: Excluded Files Pending Review")
+        print("─" * 70)
+        print(f"  Location: {current_batch_excluded_dir}")
+        print("  ")
+        print("  Next steps:")
+        print("  1. Review excluded files - confirm they should be removed")
+        print("  2. If you disagree with exclusion: move to a curated folder")
+        print(f"     (NOT back to {folder_name}/)")
+        print("  3. Delete files when reviewed")
+        print("  4. Session complete when .Excluded is empty")
+        print("=" * 70 + "\n")
+    else:
+        print("=" * 70 + "\n")
 
 if __name__ == "__main__":
     main()
