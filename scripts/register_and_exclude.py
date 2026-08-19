@@ -79,14 +79,6 @@ def main():
         print("❌ Execution Halting: 'excluded_path' configuration is completely missing from config.json.")
         sys.exit(1)
 
-    # Automatically generate the base Excluded directory path if it is missing
-    if not os.path.exists(excluded_root_dir):
-        try:
-            os.makedirs(excluded_root_dir, exist_ok=True)
-        except OSError as e:
-            print(f"❌ Critical Failure: Could not create your base 'Excluded' folder: {e}")
-            sys.exit(1)
-
     # DYNAMIC NAMING GENERATION based on processed folder name
     folder_name = os.path.basename(os.path.normpath(target_dir))
     
@@ -151,6 +143,13 @@ def main():
 
     # Perform the structured file movements to 'Excluded/' safely if variations exist
     if excluded_files_log:
+        if not os.path.exists(excluded_root_dir):
+            try:
+                os.makedirs(excluded_root_dir, exist_ok=True)
+            except OSError as e:
+                print(f"❌ Critical Failure: Could not create your base 'Excluded' folder: {e}")
+                sys.exit(1)
+        
         for source_full_path, rel_path in excluded_files_log:
             # Build the identical target structure layout matching the source path tree
             destination_path = os.path.join(current_batch_excluded_dir, rel_path)
