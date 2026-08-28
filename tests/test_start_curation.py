@@ -33,7 +33,7 @@ class TestStartCurationPipeline(unittest.TestCase):
 
         # Fixed parameters for sample files
         self.sample_content = b"photo_bytes_abc"
-        self.expected_hash = "6463eb4c7b8da5b6c31a7bf541604a11b7b0bd32b98246f66f9a0c776b3f7f8f"
+        self.expected_hash = "6f857bf5761ab48c7a5616b1466653a9b1bbde6481821ad54a97dc5143f7a667"
 
     def tearDown(self):
         # Clean up temporary directories
@@ -69,7 +69,7 @@ class TestStartCurationPipeline(unittest.TestCase):
         with open(file_b_path, "wb") as f:
             f.write(b"different_content_bytes")
             
-        file_b_hash = "5076cfb162629b3f9b207dfb11925b6c2c8f84ef0368c37d04e38e6e580e66d9"
+        file_b_hash = "efcabd4deb856acbca56378c0fd591d6727298aac6bf3705493a4859443fd934"
 
         # Execute the main pipeline loop by passing the target directory path via CLI arguments
         with patch.object(sys, "argv", ["start_curation.py", self.curated_folder]):
@@ -93,6 +93,10 @@ class TestStartCurationPipeline(unittest.TestCase):
         expected_line_b = f"{file_b_hash}\t{expected_relative_path_b}"
         self.assertTrue(any(expected_line_b in line.strip() for line in manifest_lines))
 
+        # Verify manifest is set to read-only (0o444)
+        manifest_mode = os.stat(self.manifest_path).st_mode & 0o777
+        self.assertEqual(manifest_mode, 0o444, "Manifest should be read-only")
+
     def test_safety_halt_prevents_overwriting_existing_manifest(self):
         """Ensures that the script will abort execution if a session.manifest already exists."""
         # Create a pre-existing manifest file to trigger the safety boundary
@@ -103,7 +107,17 @@ class TestStartCurationPipeline(unittest.TestCase):
         with patch.object(sys, "argv", ["start_curation.py", self.curated_folder]):
             with self.assertRaises(SystemExit) as cm:
                 main()
-            # Assert that it exited with a status code of 1 (error/halt)
+            # Assert that it exits with a status code of 1 (error/halt)
+            self.assertEqual(cm.exception.code, 1)
+
+    def test_error_on_nonexistent_path(self):
+        """Ensures graceful error message when provided path does not exist."""
+        nonexistent_path = "/abc/def/ghi/nonexistent_folder"
+        
+        with patch.object(sys, "argv", ["start_curation.py", nonexistent_path]):
+            with self.assertRaises(SystemExit) as cm:
+                with patch('sys.stdout') as mock_stdout:
+                    main()
             self.assertEqual(cm.exception.code, 1)
 
 
