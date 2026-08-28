@@ -31,7 +31,7 @@ def main():
 
     # Validation: Ensure the targeted directory physically exists on your drive
     if not os.path.exists(curated_folder_path) or not os.path.isdir(curated_folder_path):
-        print(f"❌ Execution Halting: The specified folder path is invalid or missing:\n   '{curated_folder_path}'")
+        print(f"❌ Execution Halting: The specified folder path does not exist:\n   '{curated_folder_path}'")
         sys.exit(1)
 
     manifest_path = os.path.join(curated_folder_path, MANIFEST_FILENAME)
