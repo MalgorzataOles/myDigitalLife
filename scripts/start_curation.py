@@ -23,7 +23,7 @@ def calculate_sha256(file_path: str) -> str:
 def main():
     # Accept the path to the workspace folder that you manually prepared
     if len(sys.argv) > 1:
-        curated_folder_path = sys.argv
+        curated_folder_path = sys.argv[1]
     else:
         print("❌ Execution Error: Missing required folder path argument.")
         print("Usage: python3 start_curation.py /path/to/Workspace/Your_Folder_Name")
