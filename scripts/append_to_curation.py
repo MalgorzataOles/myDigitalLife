@@ -49,7 +49,7 @@ def main():
 
     # Validation: Ensure the targeted subfolder physically exists
     if not os.path.exists(appended_folder_path) or not os.path.isdir(appended_folder_path):
-        print(f"❌ Execution Halting: The specified folder path is invalid or missing:\n   '{appended_folder_path}'")
+        print(f"❌ Execution Halting: The specified folder path does not exist:\n   '{appended_folder_path}'")
         sys.exit(1)
 
     # Resolution: Find the parent directory and locate the session.manifest file
