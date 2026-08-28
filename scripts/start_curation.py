@@ -77,6 +77,8 @@ def main():
                 f.write("# --- ORIGINAL BASELINE CURATION SESSION MANIFEST ---\n")
                 for file_hash, rel_path in manifest_entries:
                     f.write(f"{file_hash}\t{rel_path}\n")
+            
+            os.chmod(manifest_path, 0o444)
                     
             print("\n" + "=" * 70)
             print(" MANIFEST INITIALIZATION COMPLETE")
