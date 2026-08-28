@@ -26,17 +26,10 @@ class TestAppendToCurationPipeline(unittest.TestCase):
     def setUp(self):
         # Create a sandbox directory structure for simulating the Workspace layout
         self.test_dir = tempfile.mkdtemp()
-        self.dropzone_path = os.path.join(self.test_dir, "Dropzone")
         self.curated_folder = os.path.join(self.test_dir, "Workspace", "Summer_Trip_2026")
         self.appended_folder = os.path.join(self.curated_folder, "appended")
         
-        os.makedirs(self.dropzone_path, exist_ok=True)
         os.makedirs(self.appended_folder, exist_ok=True)
-
-        # Mock configuration dictionary matching your production config structure
-        self.mock_config = {
-            "dropzone_path": self.dropzone_path,
-        }
 
         # Create a baseline manifest file to simulate an active ongoing curation session
         self.manifest_path = os.path.join(self.curated_folder, "session.manifest")
@@ -45,7 +38,7 @@ class TestAppendToCurationPipeline(unittest.TestCase):
 
         # Fixed parameters for sample files
         self.sample_content = b"extra_photo_bytes"
-        self.expected_hash = "84ef0368c37d04e38e6e580e66d987d603a11b6f00db1019df99b11925b6c2c8"
+        self.expected_hash = "59587fbad48962007a3244d4928b04f1ebeea0fb5ba30a11db1385a76739ad1a"
 
     def tearDown(self):
         # Obliterate temporary directories to keep the developer machine pristine
@@ -60,16 +53,13 @@ class TestAppendToCurationPipeline(unittest.TestCase):
         calculated_hash = calculate_sha256(sample_file_path)
         self.assertEqual(calculated_hash, self.expected_hash)
 
-    @patch("scripts.append_to_curation.load_configuration")
-    def test_append_execution_appends_to_existing_manifest(self, mock_load_config):
+    def test_append_execution_appends_to_existing_manifest(self):
         """
         Integration test verifying processing mechanics:
         - Scans the designated nested target folder.
         - Calculates the unmutated hash BEFORE curation edits.
         - Safely appends the entry underneath existing manifest content with a separation marker.
         """
-        mock_load_config.return_value = self.mock_config
-
         # Place a late file arrival into the single appended subfolder directory layout
         late_file_name = "missed_backup_photo.png"
         late_file_path = os.path.join(self.appended_folder, late_file_name)

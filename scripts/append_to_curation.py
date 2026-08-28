@@ -2,14 +2,11 @@
 import os
 import sys
 import hashlib
-import json
+from datetime import datetime
 
 # ==============================================================================
-# PATH RESOLUTION
+# CONFIGURATION
 # ==============================================================================
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO_ROOT = os.path.dirname(SCRIPT_DIR)
-CONFIG_FILE_PATH = os.path.join(REPO_ROOT, "config.json")
 MANIFEST_FILENAME = "session.manifest"
 
 def calculate_sha256(file_path: str) -> str:
@@ -24,21 +21,7 @@ def calculate_sha256(file_path: str) -> str:
         print(f"⚠️  Warning: Unable to read file {file_path}. Reason: {e}")
         return None
 
-def load_configuration() -> dict:
-    """Loads directory mappings from the root configuration file."""
-    if not os.path.exists(CONFIG_FILE_PATH):
-        print(f"❌ Initialization Error: Configuration missing at: '{CONFIG_FILE_PATH}'")
-        sys.exit(1)
-    try:
-        with open(CONFIG_FILE_PATH, "r") as f:
-            return json.load(f)
-    except json.JSONDecodeError as e:
-        print(f"❌ Syntax Error in config.json: {e}")
-        sys.exit(1)
-
 def main():
-    config = load_configuration()
-    
     # Accept the specific 'appended' folder path as a command line argument
     if len(sys.argv) > 1:
         appended_folder_path = sys.argv[1]
@@ -55,10 +38,10 @@ def main():
     # Resolution: Find the parent directory and locate the session.manifest file
     curated_root_dir = os.path.dirname(os.path.normpath(appended_folder_path))
     manifest_path = os.path.join(curated_root_dir, MANIFEST_FILENAME)
-    dropzone_root_dir = config.get("dropzone_path")
 
-    if not dropzone_root_dir or not os.path.exists(dropzone_root_dir):
-        print(f"❌ Execution Halting: 'dropzone_path' inside config.json is invalid or unreachable.")
+    if not os.path.exists(manifest_path):
+        print(f"❌ Execution Halting: No '{MANIFEST_FILENAME}' found in the parent directory.")
+        print(f"   The specified folder must be inside an already registered curation folder.")
         sys.exit(1)
 
     # Casual, human-friendly home print template
@@ -68,10 +51,6 @@ def main():
     print(f" Processing folder : {appended_folder_path}")
     print(f" Target manifest   : {manifest_path}")
     print("~" * 60 + "\n")
-
-    if not os.path.exists(manifest_path):
-        print(f"⚠️  Warning: No '{MANIFEST_FILENAME}' found in the parent directory.")
-        print(f"   A new manifest registry will be initialized at: {manifest_path}")
 
     new_manifest_entries = []
 
@@ -103,7 +82,7 @@ def main():
             # Open file in append ("a") mode to protect your existing session data
             with open(manifest_path, "a", encoding="utf-8") as f:
                 # Add a clear comment line to separate batches within the manifest file text
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S") if 'datetime' in sys.modules else "Late Addition"
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 f.write(f"\n# --- APPENDED BATCH: {timestamp} ---\n")
                 
                 for file_hash, rel_path in new_manifest_entries:
@@ -122,6 +101,4 @@ def main():
         print("-" * 70)
 
 if __name__ == "__main__":
-    # Ensure datetime formatting is available for the internal log file tracking line
-    from datetime import datetime
     main()
