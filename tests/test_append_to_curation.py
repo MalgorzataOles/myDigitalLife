@@ -91,6 +91,31 @@ class TestAppendToCurationPipeline(unittest.TestCase):
             f"Expected log entry line missing from file updates. Searched for: {expected_log_line}"
         )
 
+    def test_append_to_readonly_manifest_restores_permissions(self):
+        """
+        Verifies that the script can append to a read-only manifest and restores protection.
+        """
+        # Place a test file
+        late_file_name = "test_file.txt"
+        late_file_path = os.path.join(self.appended_folder, late_file_name)
+        with open(late_file_path, "wb") as f:
+            f.write(self.sample_content)
+
+        # Make manifest read-only (as start_curation.py does)
+        os.chmod(self.manifest_path, 0o444)
+        
+        # Verify it's read-only before
+        manifest_mode_before = os.stat(self.manifest_path).st_mode & 0o777
+        self.assertEqual(manifest_mode_before, 0o444)
+
+        # Execute the script
+        with patch.object(sys, "argv", ["append_to_curation.py", self.appended_folder]):
+            main()
+
+        # Verify manifest is restored to read-only after append
+        manifest_mode_after = os.stat(self.manifest_path).st_mode & 0o777
+        self.assertEqual(manifest_mode_after, 0o444, "Manifest should be restored to read-only after append")
+
 
 if __name__ == "__main__":
     unittest.main()

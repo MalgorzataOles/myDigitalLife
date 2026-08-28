@@ -78,6 +78,12 @@ def main():
 
     # Append the new records cleanly to the manifest file using tab separation
     if new_manifest_entries:
+        # Make manifest temporarily writable (it's protected as read-only by start_curation.py)
+        try:
+            os.chmod(manifest_path, 0o644)
+        except OSError as e:
+            print(f"⚠️  Warning: Could not make manifest writable: {e}")
+        
         try:
             # Open file in append ("a") mode to protect your existing session data
             with open(manifest_path, "a", encoding="utf-8") as f:
@@ -87,6 +93,9 @@ def main():
                 
                 for file_hash, rel_path in new_manifest_entries:
                     f.write(f"{file_hash}\t{rel_path}\n")
+            
+            # Restore read-only protection
+            os.chmod(manifest_path, 0o444)
                     
             print("\n" + "=" * 70)
             print(" APPEND RUN COMPLETE")
@@ -94,6 +103,11 @@ def main():
             print(f" New entries added to manifest : {len(new_manifest_entries)}")
             print("=" * 70 + "\n")
         except (IOError, OSError) as e:
+            # Attempt to restore read-only protection even on failure
+            try:
+                os.chmod(manifest_path, 0o444)
+            except OSError:
+                print(f"⚠️  Warning: Manifest left writable - could not restore read-only: {e}")
             print(f"❌ Critical Failure: Could not write updates to manifest file: {e}")
     else:
         print("\n" + "✅" + "-" * 68)
