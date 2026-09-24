@@ -52,7 +52,7 @@ def read_checksum_file_lines(file_path: str) -> list:
                         continue
                     parts = cleaned.split("\t")
                     if len(parts) >= 2:
-                        records.append((parts, parts[1]))
+                        records.append((parts[0], parts[1]))
         except (IOError, OSError) as e:
             print(f"⚠️  Warning: Error reading file {file_path}: {e}")
     return records
@@ -73,30 +73,45 @@ def main():
     # Parse input arguments and enforce safety flags
     is_dry_run = True
     curated_folder_path = None
+    dropzone_root = None
+    cleared_root = None
 
     args = sys.argv[1:]
     if "--commit" in args:
         is_dry_run = False
         args.remove("--commit")
 
-    if len(args) > 0:
-        curated_folder_path = args[0]
-    else:
-        print("❌ Execution Error: Missing required folder path argument.")
-        print("Usage (Dry-Run) : python3 finalize_curation.py /path/to/Workspace/Folder")
-        print("Usage (Commit)  : python3 finalize_curation.py /path/to/Workspace/Folder --commit")
-        sys.exit(1)
+    # Parse named arguments
+    i = 0
+    while i < len(args):
+        if args[i] == "--curated" and i + 1 < len(args):
+            curated_folder_path = args[i + 1]
+            i += 2
+        elif args[i] == "--dropzone" and i + 1 < len(args):
+            dropzone_root = args[i + 1]
+            i += 2
+        else:
+            i += 1
+
+    # Fall back to config for unspecified paths
+    if dropzone_root is None:
+        dropzone_root = config.get("dropzone_path")
+    if cleared_root is None:
+        cleared_root = config.get("cleared_path")
 
     # Validation checks
-    if not os.path.exists(curated_folder_path) or not os.path.isdir(curated_folder_path):
-        print(f"❌ Execution Halting: The specified folder path is invalid or missing:\n   '{curated_folder_path}'")
+    if not curated_folder_path:
+        print("❌ Execution Error: Missing required --curated folder path argument.")
+        print("Usage (Dry-Run) : python3 finalize_curation.py --curated /path/to/Workspace/Folder [--dropzone /path/to/Dropzone]")
+        print("Usage (Commit)  : python3 finalize_curation.py --curated /path/to/Workspace/Folder [--dropzone /path/to/Dropzone] --commit")
         sys.exit(1)
 
-    dropzone_root = config.get("dropzone_path")
-    cleared_root = config.get("cleared_path")
+    if not os.path.exists(curated_folder_path) or not os.path.isdir(curated_folder_path):
+        print(f"❌ Execution Halting: The specified curated folder path is invalid or missing:\n   '{curated_folder_path}'")
+        sys.exit(1)
 
     if not dropzone_root or not os.path.exists(dropzone_root):
-        print(f"❌ Execution Halting: 'dropzone_path' inside config.json is invalid or unreachable.")
+        print(f"❌ Execution Halting: 'dropzone_path' (from --dropzone or config.json) is invalid or unreachable.")
         sys.exit(1)
 
     if not cleared_root:
@@ -127,11 +142,13 @@ def main():
     # Casual, human-friendly home print header templates
     print("\n" + "~" * 60)
     if is_dry_run:
-        print(" 👀 RUNNING IN DRY-RUN MODE: Previewing proposed steps safely...")
+        print(" 👀 RUNNING IN DRY-RUN MODE: Previewing proposed steps...")
     else:
         print(" 📸 EXECUTING WORKSPACE CURATION FINALIZATION...")
     print("~" * 60)
     print(f" Curated Folder   : {curated_folder_path}")
+    print(f" Dropzone Root    : {dropzone_root}")
+    print(f" Cleared Root     : {cleared_root}")
     print(f" Dropzone Registry: {dropzone_registry_path}")
     print(f" Safety Capsule   : {current_capsule_dir}")
     print("~" * 60 + "\n")

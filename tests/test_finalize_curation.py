@@ -42,8 +42,8 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
             "cleared_path": self.cleared_path
         }
 
-        # Set up a master exclude list target in the simulated repo root
-        self.master_exclusion_path = os.path.join(self.test_dir, "exclude.sha256")
+        # Set up a master exclude list target in the dropzone folder (matching script behavior)
+        self.master_exclusion_path = os.path.join(self.dropzone_path, "exclude.sha256")
         
         # Fixed parameters for mock files
         self.file_hash_1 = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"  # content: "hello"
@@ -78,7 +78,7 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         self.keeper_file_path = os.path.join(self.curated_folder, "color_corrected.jpg")
         with open(self.keeper_file_path, "wb") as f:
             f.write(b"curated_photo_modifications")
-        self.keeper_hash = "679808381bf482d8c304d9c79238e6e580e66d987d603a11b6f00db1019df99b"
+        self.keeper_hash = "c5fbe9c6517505b088c22f0f1557a8a73b6dd0b8b947d90a031d52b3603f99c0"
 
     def tearDown(self):
         # Obliterate temporary sandbox directories
@@ -92,7 +92,7 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         mock_repo_root.return_value = self.test_dir
 
         # Run script in default safety mode (No --commit flag passed)
-        with patch.object(sys, "argv", ["finalize_curation.py", self.curated_folder]):
+        with patch.object(sys, "argv", ["finalize_curation.py", "--curated", self.curated_folder]):
             main()
 
         # Assertions for safety: No modifications should exist on disk
@@ -121,7 +121,7 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         mock_repo_root.return_value = self.test_dir
 
         # Run script in execution mode by including the explicit safety release flag
-        with patch.object(sys, "argv", ["finalize_curation.py", self.curated_folder, "--commit"]):
+        with patch.object(sys, "argv", ["finalize_curation.py", "--curated", self.curated_folder, "--commit"]):
             main()
 
         # 1. Check isolation capsule deployment inside Cleared/
