@@ -102,8 +102,15 @@ def main():
     # Validation checks
     if not curated_folder_path:
         print("❌ Execution Error: Missing required --curated folder path argument.")
-        print("Usage (Dry-Run) : python3 finalize_curation.py --curated /path/to/Workspace/Folder [--dropzone /path/to/Dropzone]")
-        print("Usage (Commit)  : python3 finalize_curation.py --curated /path/to/Workspace/Folder [--dropzone /path/to/Dropzone] --commit")
+        print("")
+        print("Usage:")
+        print("  (Dry-Run) : python3 finalize_curation.py --curated /path/to/Workspace/Folder [--dropzone /path/to/Dropzone]")
+        print("  (Commit)  : python3 finalize_curation.py --curated /path/to/Workspace/Folder [--dropzone /path/to/Dropzone] --commit")
+        print("")
+        print("Options:")
+        print("  --curated   Required. Path to the curated workspace folder.")
+        print("  --dropzone  Optional. Path to Dropzone folder (defaults to config.json).")
+        print("  --commit    Optional. Execute changes (default is dry-run).")
         sys.exit(1)
 
     if not os.path.exists(curated_folder_path) or not os.path.isdir(curated_folder_path):
