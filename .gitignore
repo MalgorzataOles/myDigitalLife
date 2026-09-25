@@ -1,0 +1,12 @@
+# Ignore hidden macOS system configuration files
+.DS_Store
+._*
+
+# Ignore private local path config rulesfiles
+config.json
+
+# Ignore all generated sha256
+*.sha256
+
+# Ignore all Python compiled bytecode cache folders
+**/__pycache__/
