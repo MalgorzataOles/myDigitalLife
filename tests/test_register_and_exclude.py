@@ -28,7 +28,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         # Create a sandbox directory structure for simulating QNAP mounts
         self.test_dir = tempfile.mkdtemp()
         self.dropzone_path = os.path.join(self.test_dir, "Dropzone")
-        self.excluded_path = os.path.join(self.test_dir, ".Excluded")
+        self.excluded_path = os.path.join(self.test_dir, "Excluded")
         
         os.makedirs(self.dropzone_path, exist_ok=True)
         os.makedirs(self.excluded_path, exist_ok=True)
@@ -95,8 +95,8 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         """
         mock_load_config.return_value = self.mock_config
 
-        # 1. Establish an exclusion fingerprint match constraint for the 'Dropzone' folder name
-        exclusion_file_path = os.path.join(self.dropzone_path, "Dropzone.excluded.sha256")
+        # 1. Establish an exclusion fingerprint match constraint via the shared exclusion ledger
+        exclusion_file_path = os.path.join(self.dropzone_path, "exclude.sha256")
         with open(exclusion_file_path, "w", encoding="utf-8") as f:
             f.write(f"{self.expected_hash}\tany_old_path/photo.jpg\n")
 
@@ -115,7 +115,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         with open(duplicate_file_path, "wb") as f:
             f.write(self.sample_content) # Writes "hello", matches the exclusion hash
 
-        # 3. Execute the pipeline main application loop safely using empty CLI parameters
+        # 3. Execute the pipeline main application loop (no CLI folder override anymore)
         with patch.object(sys, "argv", ["register_and_exclude.py"]):
             main()
 
@@ -123,8 +123,8 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         # Check A: The unique file must remain in place inside Dropzone
         self.assertTrue(os.path.exists(unique_file_path))
 
-        # Check B: The unique file relative path must be committed to the registered registry
-        registry_file_path = os.path.join(self.dropzone_path, "Dropzone.registered.sha256")
+        # Check B: The unique file relative path must be committed to the Dropzone registry
+        registry_file_path = os.path.join(self.dropzone_path, "registered.sha256")
         self.assertTrue(os.path.exists(registry_file_path))
         registry_data = load_checksum_list(registry_file_path, is_local_registry=True)
         self.assertIn("unique_folder/unique.txt", registry_data)
@@ -132,14 +132,15 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         # Check C: The excluded duplicate must vanish from the raw Dropzone space
         self.assertFalse(os.path.exists(duplicate_file_path))
 
-        # Check D: The duplicate file structure tree must be preserved inside the .Excluded folder
-        # We search inside .Excluded/Dropzone/ for a timestamped folder containing our nested directories
-        dropzone_excluded_path = os.path.join(self.excluded_path, "Dropzone")
-        timestamped_folders = os.listdir(dropzone_excluded_path)
-        self.assertEqual(len(timestamped_folders), 1, "A timestamped batch folder should have been created.")
-        
+        # Check D: The duplicate file structure tree must be preserved inside Excluded/
+        # We search directly inside Excluded/ for a "registration_..." batch folder
+        timestamped_folders = [
+            name for name in os.listdir(self.excluded_path) if name.startswith("registration_")
+        ]
+        self.assertEqual(len(timestamped_folders), 1, "A timestamped registration batch folder should have been created.")
+
         expected_moved_location = os.path.join(
-            dropzone_excluded_path, timestamped_folders[0], "abc", "bcd", "def.txt"
+            self.excluded_path, timestamped_folders[0], "abc", "bcd", "def.txt"
         )
         self.assertTrue(os.path.exists(expected_moved_location), "The file structure layout was broken during movement.")
 
