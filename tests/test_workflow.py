@@ -21,6 +21,7 @@ from scripts.common import (
     append_checksum_lines,
     find_unregistered_files,
     check_folder_layout,
+    folders_that_become_empty,
 )
 
 
@@ -343,6 +344,88 @@ class TestRunLog(WorkflowTestCase):
         with self.assertRaises(SystemExit):
             self.register()
         self.assertFalse(os.path.exists(self.registry))
+
+
+class TestEmptyFolderCleanup(WorkflowTestCase):
+    def day(self, source="Phone1", date="20260920"):
+        return os.path.join(self.dropzone, source, date)
+
+    def test_emptied_date_folder_is_removed_but_the_source_folder_stays(self):
+        self.write(os.path.join(self.day(), "a.jpg"), b"a")
+        self.register()
+        self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
+        output = self.finalize("--commit")
+        self.assertFalse(os.path.exists(self.day()))
+        self.assertTrue(os.path.isdir(os.path.join(self.dropzone, "Phone1")))
+        self.assertIn("REMOVED", output)
+
+    def test_dry_run_lists_the_folders_but_removes_nothing(self):
+        self.write(os.path.join(self.day(), "a.jpg"), b"a")
+        self.register()
+        self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
+        output = self.finalize("--dry-run")
+        self.assertIn("WILL REMOVE", output)
+        self.assertTrue(os.path.exists(os.path.join(self.day(), "a.jpg")))
+
+    def test_hidden_finder_files_do_not_keep_a_folder_alive(self):
+        self.write(os.path.join(self.day(), "a.jpg"), b"a")
+        self.write(os.path.join(self.day(), ".DS_Store"), b"x")
+        self.write(os.path.join(self.day(), "._a.jpg"), b"x")
+        self.register()
+        self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
+        self.finalize("--commit")
+        self.assertFalse(os.path.exists(self.day()))
+
+    def test_a_folder_that_still_holds_files_is_kept(self):
+        self.write(os.path.join(self.day(), "a.jpg"), b"a")
+        self.write(os.path.join(self.day(), "b.jpg"), b"b")
+        self.register()
+        self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
+        self.finalize("--commit")
+        self.assertTrue(os.path.exists(os.path.join(self.day(), "b.jpg")))
+        self.assertFalse(os.path.exists(os.path.join(self.day(), "a.jpg")))
+
+    def test_nested_empty_folders_are_removed_up_to_the_source_level(self):
+        self.write(os.path.join(self.day(), "album", "deep", "a.jpg"), b"a")
+        self.register()
+        self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
+        self.finalize("--commit")
+        self.assertFalse(os.path.exists(self.day()))
+        self.assertTrue(os.path.isdir(os.path.join(self.dropzone, "Phone1")))
+
+    def test_an_unrelated_empty_folder_is_left_alone(self):
+        os.makedirs(self.day("Phone2", "20261001"))  # someone just created it, nothing moved from it
+        self.write(os.path.join(self.day(), "a.jpg"), b"a")
+        self.register()
+        self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
+        self.finalize("--commit")
+        self.assertTrue(os.path.isdir(self.day("Phone2", "20261001")))
+
+    def test_register_removes_the_folder_a_duplicate_was_moved_out_of(self):
+        self.write(os.path.join(self.day("Phone1", "20260920"), "a.jpg"), b"a")
+        self.register()
+        self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
+        self.finalize("--commit")
+        self.write(os.path.join(self.day("Phone2", "20261001"), "again.jpg"), b"a")
+        output = self.register()
+        self.assertFalse(os.path.exists(self.day("Phone2", "20261001")))
+        self.assertTrue(os.path.isdir(os.path.join(self.dropzone, "Phone2")))
+        self.assertIn("Empty folders removed", output)
+
+    def test_rerun_after_interruption_before_the_cleanup_still_cleans_up(self):
+        self.write(os.path.join(self.day(), "a.jpg"), b"a")
+        self.register()
+        self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
+        with patch("scripts.finalize_curation.remove_folders", side_effect=KeyboardInterrupt()):
+            with self.assertRaises(KeyboardInterrupt):
+                self.finalize("--commit")
+        self.assertEqual(len(read_checksum_rows(self.registry)), 1)
+        self.finalize("--commit")
+        self.assertFalse(os.path.exists(self.day()))
+        self.assertEqual(len(read_checksum_rows(self.registry)), 0)
+
+    def test_files_directly_in_the_source_folder_never_remove_it(self):
+        self.assertEqual(folders_that_become_empty(self.dropzone, ["Phone1/a.jpg", "b.jpg"]), [])
 
 
 if __name__ == "__main__":

@@ -421,6 +421,60 @@ def find_unregistered_files(dropzone_path: str, registered_paths: set) -> list:
     return sorted(unregistered)
 
 
+def folders_that_become_empty(dropzone_path: str, moved_relative_paths: list, keep_depth: int = 1) -> list:
+    """
+    Returns the Dropzone-relative folders that are (or will be) empty once the given
+    files are gone, deepest first. Only the folders those files were in are considered.
+    The top `keep_depth` levels (the <source> folder such as Phone1) are always kept,
+    and so is the Dropzone itself. Hidden OS files (.DS_Store, ._*, ...) don't count
+    as content.
+    """
+    moved_full_paths = {os.path.join(dropzone_path, rel_path) for rel_path in moved_relative_paths}
+    candidates = set()
+    for rel_path in moved_relative_paths:
+        folder = os.path.dirname(rel_path)
+        parts = [part for part in folder.split(os.sep) if part] if folder else []
+        if ".." in parts:
+            continue
+        for depth in range(len(parts), keep_depth, -1):
+            candidates.add(os.sep.join(parts[:depth]))
+
+    removable, result = set(), []
+    for rel_folder in sorted(candidates, key=lambda path: path.count(os.sep), reverse=True):
+        folder = os.path.join(dropzone_path, rel_folder)
+        if not os.path.isdir(folder) or os.path.islink(folder):
+            continue
+        try:
+            entries = list(os.scandir(folder))
+        except OSError:
+            continue
+        if all(
+            (entry.is_dir(follow_symlinks=False) and entry.path in removable)
+            or (not entry.is_dir(follow_symlinks=False)
+                and (entry.path in moved_full_paths or is_ignored_file(entry.name)))
+            for entry in entries
+        ):
+            removable.add(folder)
+            result.append(rel_folder)
+    return result
+
+
+def remove_folders(dropzone_path: str, relative_folders: list) -> list:
+    """Deletes the given (deepest first) folders, including leftover hidden OS files. Returns those removed."""
+    removed = []
+    for rel_folder in relative_folders:
+        folder = os.path.join(dropzone_path, rel_folder)
+        try:
+            for entry in list(os.scandir(folder)):
+                if not entry.is_dir(follow_symlinks=False) and is_ignored_file(entry.name):
+                    os.remove(entry.path)
+            os.rmdir(folder)
+            removed.append(rel_folder)
+        except OSError:
+            pass
+    return removed
+
+
 def group_by_source_folder(relative_paths: list, depth: int = 2) -> dict:
     """
     Groups Dropzone-relative paths by their first `depth` folders (the expected

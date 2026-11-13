@@ -17,6 +17,8 @@ from scripts.common import (
     load_checksum_list,
     find_unregistered_files,
     describe_folder_counts,
+    folders_that_become_empty,
+    remove_folders,
     hash_files_in,
     write_checksum_pairs,
     append_checksum_lines,
@@ -266,6 +268,17 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
                 sys.exit(1)
             print(f"   [MOVED] -> {rel_path}")
         moved_count += 1
+
+    # Folders emptied by this session (the <source> folder such as Phone1 is kept).
+    # Done before the registry rewrite so a re-run after an interruption still
+    # knows which folders to look at; files already moved count as gone.
+    emptied_folders = folders_that_become_empty(dropzone_path, [rel for _, rel in files_to_move])
+    if emptied_folders:
+        print("\n🧹 Dropzone folders left empty by this session:")
+        for rel_folder in emptied_folders:
+            print(f"   [{'WILL REMOVE' if is_dry_run else 'REMOVED'}] {rel_folder}{os.sep}")
+        if not is_dry_run:
+            remove_folders(dropzone_path, emptied_folders)
 
     if not is_dry_run:
         if not write_checksum_pairs(

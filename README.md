@@ -157,6 +157,8 @@ python3 -m unittest discover -v
 
 * **The scripts stop instead of guessing.** `finalize_curation.py` refuses to run, and changes nothing, if a file in `Original/` or `Sorted/` can't be read, if Dropzone contains unregistered files, or if the same content is in `Sorted/` twice. Both scripts refuse folder setups where `Excluded/` or a session folder lies inside Dropzone.
 
+* **Empty folders are cleaned up:** when `register_and_exclude.py` or `finalize_curation.py` moves the last file out of a `<source>/<date>` folder, that folder is removed (hidden Finder/Windows files in it don't count). Only folders the run itself emptied are touched, and the `<source>` folder (for example `Phone1/`) always stays. The dry run lists the folders it would remove, and the log lists the ones removed.
+
 * **Files that are skipped:** macOS and Windows metadata (`._*`, `.DS_Store`, `Thumbs.db`, `desktop.ini`). Files whose names contain a tab or line break are not registered; the summary lists them so you can rename them.
 
 * **One run at a time:** while `register_and_exclude.py` or `finalize_curation.py` runs, it holds a lock (a `.pipeline.lock` folder in Dropzone), so a second run, even from another computer, stops and tells you who is running what. The lock is removed automatically when the run ends, fails or is interrupted. If a computer crashes or loses power mid-run, a leftover lock from that same computer is removed on the next run. A leftover lock from another computer is not removed automatically: the message names the owner, and if you are sure nobody is running the scripts, delete the `.pipeline.lock` folder it points to.

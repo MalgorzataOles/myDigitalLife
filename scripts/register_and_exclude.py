@@ -25,6 +25,8 @@ from scripts.common import (
     LOCK_DIRNAME,
     is_ignored_dropzone_file,
     describe_folder_counts,
+    folders_that_become_empty,
+    remove_folders,
     TIMESTAMP_FORMAT,
     REGISTRY_FILENAME,
     EXCLUDE_FILENAME,
@@ -155,6 +157,9 @@ def process(dropzone_path, excluded_root_dir, user_name):
                 failed_moves.append(rel_path)
 
     # Save and commit new unique additions to the Dropzone registry
+    # Leave no empty <date> folders behind (the <source> folder is kept)
+    removed_folders = remove_folders(dropzone_path, folders_that_become_empty(dropzone_path, moved_files))
+
     # The registry is replaced in one step (never appended to), so a run that
     # is cut off can't leave a half-written row behind.
     if new_entries:
@@ -179,6 +184,10 @@ def process(dropzone_path, excluded_root_dir, user_name):
         for rel_path in sorted(failed_moves):
             print(f"     - {rel_path}")
         print("     They are still in Dropzone and were not registered. Run this script again.")
+    if removed_folders:
+        print(f" 🧹 Empty folders removed from Dropzone: {len(removed_folders)}")
+        for rel_folder in removed_folders:
+            print(f"     - {rel_folder}{os.sep}")
     if badly_named_files:
         print(f" ⚠️  Files NOT registered (name contains a tab or line break): {len(badly_named_files)}")
         for rel_path in sorted(badly_named_files):
