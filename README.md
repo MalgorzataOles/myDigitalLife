@@ -1,6 +1,6 @@
 # myDigitalLife
 
-myDigitalLife is a small, hash-based pipeline for safely curating family photo and video backups across a Dropzone intake folder, a Workspace curation area, and an archive, on shared network storage. It's designed to be simple enough for several non-technical family members to follow the same workflow.
+myDigitalLife is a small, hash-based pipeline for safely curating family file backups (photos, videos, documents or anything else) across a Dropzone intake folder, a Workspace curation area, and an archive, on shared network storage. It's designed to be simple enough for several non-technical family members to follow the same workflow.
 
 ## 📁 Repository & System Structure
 
@@ -85,7 +85,7 @@ Inside `Workspace/`, create one folder per curation session, named however you l
 - **`Original/`** - an untouched copy of whatever you pulled from Dropzone for this session. Any internal structure is fine; hashing doesn't care about folder layout.
 - **`Sorted/`** - your actual working copy. Reorganize, rename, move into categories, delete - whatever you want, as much as you want, as many times as you want.
 
-`finalize_curation.py` treats a file as "handled" if its hash shows up **anywhere in `Original/` OR `Sorted/`** - not just in `Sorted/`. This is deliberate: it's what lets you freely delete things from `Sorted/` mid-session (because you decided you don't want that photo in your final layout) while the corresponding Dropzone original still gets safely archived, since you did review it.
+`finalize_curation.py` treats a file as "handled" if its hash shows up **anywhere in `Original/` OR `Sorted/`** - not just in `Sorted/`. This is deliberate: it's what lets you freely delete things from `Sorted/` mid-session (because you decided you don't want that file in your final layout) while the corresponding Dropzone original still gets safely archived, since you did review it.
 
 **The one rule to remember:** if you remove a file from `Sorted/` because you've changed your mind and do **not** want its Dropzone original archived at all (i.e. you don't want it treated as reviewed), you must also delete it from `Original/`. Otherwise its mere presence in `Original/` is enough to mark it "handled".
 
