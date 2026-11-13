@@ -21,6 +21,7 @@ from scripts.common import (
     write_checksum_pairs,
     append_checksum_lines,
     check_folder_layout,
+    pipeline_lock,
     TIMESTAMP_FORMAT,
     REGISTRY_FILENAME,
     EXCLUDE_FILENAME,
@@ -84,6 +85,11 @@ def main():
         print(f"❌ Execution Halting: {layout_problem}")
         sys.exit(1)
 
+    with pipeline_lock(dropzone_path, "finalize_curation.py"):
+        process(is_dry_run, session_path, original_path, sorted_path, dropzone_path, excluded_root_dir)
+
+
+def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path, excluded_root_dir):
     print("\n" + "~" * 60)
     if is_dry_run:
         print(" 👀 RUNNING IN DRY-RUN MODE: Previewing proposed steps...")

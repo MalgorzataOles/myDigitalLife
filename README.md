@@ -123,6 +123,6 @@ python3 -m unittest discover -v
 
 * **Files that are skipped:** macOS and Windows metadata (`._*`, `.DS_Store`, `Thumbs.db`, `desktop.ini`). Files whose names contain a tab or line break are not registered; the summary lists them so you can rename them.
 
-* **One person at a time:** run `register_and_exclude.py` and `finalize_curation.py` only when nobody else is running either of them on the same Dropzone.
+* **One run at a time:** while `register_and_exclude.py` or `finalize_curation.py` runs, it holds a lock (a `.pipeline.lock` folder in Dropzone), so a second run, even from another computer, stops and tells you who is running what. The lock is removed automatically when the run ends, fails or is interrupted. If a computer crashes or loses power mid-run, a leftover lock from that same computer is removed on the next run. A leftover lock from another computer is not removed automatically: the message names the owner, and if you are sure nobody is running the scripts, delete the `.pipeline.lock` folder it points to.
 
 * **Resetting the registry:** If `registered.sha256` ever becomes corrupted or misaligned, delete it. The next `register_and_exclude.py` run will safely rebuild it from whatever is actually in Dropzone (already-excluded content will just be skipped again via `exclude.sha256`).

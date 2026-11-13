@@ -2,8 +2,15 @@
 import os
 import sys
 import json
+import json
+import shutil
+import signal
+import socket
+import getpass
 import hashlib
 import unicodedata
+from contextlib import contextmanager
+from datetime import datetime
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
@@ -13,6 +20,11 @@ CONFIG_FILE_PATH = os.path.join(REPO_ROOT, "config.json")
 # scripts can never silently drift onto different names for the same file.
 REGISTRY_FILENAME = "registered.sha256"
 EXCLUDE_FILENAME = "exclude.sha256"
+
+# Folder created in Dropzone while register_and_exclude.py or finalize_curation.py
+# runs, so two people can't change the registry at the same time.
+LOCK_DIRNAME = ".pipeline.lock"
+LOCK_OWNER_FILENAME = "owner.json"
 
 # One timestamp format for batch folder names and registry rows (YYYYMMDD_hhmmss).
 TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
@@ -186,11 +198,95 @@ def is_ignored_dropzone_file(filename: str) -> bool:
             filename == EXCLUDE_FILENAME)
 
 
+def _process_is_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return True
+    return True
+
+
+def _read_lock_owner(lock_path: str) -> dict:
+    try:
+        with open(os.path.join(lock_path, LOCK_OWNER_FILENAME), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _lock_is_stale(owner: dict) -> bool:
+    """A lock is only known to be stale when it was made on this computer by a process that is gone."""
+    return (owner.get("host") == socket.gethostname()
+            and isinstance(owner.get("pid"), int)
+            and not _process_is_running(owner["pid"]))
+
+
+@contextmanager
+def pipeline_lock(dropzone_path: str, script_name: str):
+    """
+    Holds an exclusive lock on the Dropzone for the duration of the with-block.
+    Creating a folder is atomic, even on a network share, so only one run can
+    succeed. The lock is released on normal exit, errors, Ctrl-C and when the
+    terminal is closed. After a hard crash a stale lock may remain: one left by
+    a dead process on this computer is removed automatically, any other is
+    reported with who made it and how to remove it.
+    """
+    lock_path = os.path.join(dropzone_path, LOCK_DIRNAME)
+
+    for attempt in (1, 2):
+        try:
+            os.mkdir(lock_path)
+            break
+        except FileExistsError:
+            owner = _read_lock_owner(lock_path)
+            if attempt == 1 and _lock_is_stale(owner):
+                print("⚠️  Removing a leftover lock from an earlier run that did not finish.")
+                shutil.rmtree(lock_path, ignore_errors=True)
+                continue
+            who = (f"{owner.get('script', 'a script')}, started {owner.get('started', '?')} "
+                   f"by {owner.get('user', '?')} on {owner.get('host', '?')}") if owner else "unknown (it may just be starting)"
+            print("❌ Execution Halting: another run is in progress on this Dropzone:")
+            print(f"   {who}")
+            print("\n   Wait for it to finish, then run this again.")
+            print(f"   If you are SURE that run crashed and nobody is running these scripts,")
+            print(f"   delete this folder and run again:\n     {lock_path}")
+            sys.exit(1)
+
+    try:
+        user = getpass.getuser()
+    except Exception:
+        user = "?"
+    owner_info = {"script": script_name, "user": user, "host": socket.gethostname(),
+                  "pid": os.getpid(), "started": datetime.now().strftime(TIMESTAMP_FORMAT)}
+
+    previous_handlers = {}
+
+    def _exit_cleanly(signum, frame):
+        sys.exit(128 + signum)
+
+    try:
+        with open(os.path.join(lock_path, LOCK_OWNER_FILENAME), "w", encoding="utf-8") as f:
+            json.dump(owner_info, f)
+        for name in ("SIGTERM", "SIGHUP"):
+            if hasattr(signal, name):
+                previous_handlers[getattr(signal, name)] = signal.signal(getattr(signal, name), _exit_cleanly)
+        yield
+    finally:
+        for signum, handler in previous_handlers.items():
+            signal.signal(signum, handler)
+        shutil.rmtree(lock_path, ignore_errors=True)
+
+
 def find_unregistered_files(dropzone_path: str, registered_paths: set) -> list:
     """Returns the sorted Dropzone-relative paths of files not yet listed in the registry."""
     unregistered = []
     known_paths = {normalize_path(path) for path in registered_paths}
-    for root, _, files in os.walk(dropzone_path):
+    for root, dirs, files in os.walk(dropzone_path):
+        dirs[:] = [d for d in dirs if d != LOCK_DIRNAME]
         for file in files:
             if is_ignored_dropzone_file(file):
                 continue

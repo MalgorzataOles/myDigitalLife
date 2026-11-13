@@ -18,6 +18,8 @@ from scripts.common import (
     normalize_path,
     has_unsupported_name,
     check_folder_layout,
+    pipeline_lock,
+    LOCK_DIRNAME,
     is_ignored_dropzone_file,
     describe_folder_counts,
     TIMESTAMP_FORMAT,
@@ -45,6 +47,11 @@ def main():
         print(f"❌ Execution Halting: {layout_problem}")
         sys.exit(1)
 
+    with pipeline_lock(dropzone_path, "register_and_exclude.py"):
+        process(dropzone_path, excluded_root_dir)
+
+
+def process(dropzone_path, excluded_root_dir):
     registry_path = os.path.join(dropzone_path, REGISTRY_FILENAME)
     exclusion_list_path = os.path.join(dropzone_path, EXCLUDE_FILENAME)
 
@@ -79,7 +86,8 @@ def main():
 
     print("🔎 Scanning files ...")
 
-    for root, _, files in os.walk(dropzone_path):
+    for root, dirs, files in os.walk(dropzone_path):
+        dirs[:] = [d for d in dirs if d != LOCK_DIRNAME]
         for file in files:
             # Skip hidden metadata artifacts and the registry files themselves
             if is_ignored_dropzone_file(file):
