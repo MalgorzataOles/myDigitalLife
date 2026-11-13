@@ -62,7 +62,13 @@ Step 5: [Preview - optional] ──> preview_pending_removal.py Name_Date
                                   fills ToBeDeleted/ with anything in Original/
                                   that didn't make it into Sorted/, for one last look
                                      │
-Step 6: [Finalize] ─────────────> finalize_curation.py Name_Date --dry-run | --commit
+Step 6: [Dry run] ──────────────> finalize_curation.py Name_Date --dry-run
+                                  checks everything and shows what would happen
+                                     │
+Step 7: [Copy to library] ─────> copy the folders inside Sorted/ into the shared
+                                  home folder and check the copy (see below)
+                                     │
+Step 8: [Finalize] ─────────────> finalize_curation.py Name_Date --commit
                                   matched Dropzone originals archived to
                                   Excluded/curation_.../, exclude.sha256 updated
 ```
@@ -99,6 +105,29 @@ The two subfolders are:
 **Never edit files inside `Original/`** (no rotating, re-saving or renaming in an editor): a changed file no longer matches its Dropzone original, so that original would stay behind in Dropzone. Do your edits on the copy in `Sorted/`. If `Original/` contains files that Dropzone doesn't know, `finalize_curation.py` lists them in both `--dry-run` and `--commit`, flags ones that look like a changed copy of a Dropzone file, and (with `--commit`) records their content in `exclude.sha256` like everything else you curated.
 
 **Duplicate filing is not supported.** If the exact same file content ends up at two different paths inside `Sorted/` (e.g. filed under both "Family" and "Beach"), `finalize_curation.py` will print both paths and abort before touching anything. Resolve it by keeping only one copy and re-run.
+
+## 📦 Copying the curated folders to the shared home folder
+
+Do this after `finalize_curation.py --dry-run` looks right and **before** `--commit`. That way, whatever is recorded as done is already saved in the home folder. The scripts don't copy anything for you.
+
+Copy the folders that are inside `Sorted/` (for example `Holiday/`), not the `Sorted` folder itself, so they end up directly in the home folder. The files you copy should not already exist there. Never overwrite anything.
+
+**By hand (Windows, or if you prefer not to use the terminal):** open `Sorted/`, select everything inside it and drag it into the home folder. If you're asked what to do about files that already exist, choose to **skip** them or **cancel**, never "replace". Then spot-check that a few folders and files arrived.
+
+**With rsync (macOS and Linux):**
+
+```{bash}
+# 1. Preview what would be copied (changes nothing)
+rsync -avn --ignore-existing "/path/to/Workspace/Name_Date/Sorted/" "/path/to/home_folder/"
+
+# 2. Copy, never overwriting anything that already exists
+rsync -av --ignore-existing "/path/to/Workspace/Name_Date/Sorted/" "/path/to/home_folder/"
+
+# 3. Verify by content: apart from rsync's summary lines, this must list no file names
+rsync -avnc "/path/to/Workspace/Name_Date/Sorted/" "/path/to/home_folder/"
+```
+
+The slash after `Sorted/` matters: it copies the contents of `Sorted/` (your folders), while `Sorted` without a slash would create an extra `Sorted` folder inside the home folder. A folder that already exists in the home folder is merged into, not replaced. If step 3 lists a file, it was not copied, or a different file with the same name was already there; fix that before running `finalize_curation.py --commit`.
 
 ## 🧪 Running Automated Unit Tests
 
