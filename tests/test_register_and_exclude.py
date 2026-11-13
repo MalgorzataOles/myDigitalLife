@@ -36,7 +36,8 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         # Mock configuration dictionary matching your production config structure
         self.mock_config = {
             "dropzone_path": self.dropzone_path,
-            "excluded_path": self.excluded_path
+            "excluded_path": self.excluded_path,
+            "user_name": "Tester",
         }
 
         # Create a test file with known content to compute explicit expected hash value
@@ -217,7 +218,8 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
 
         rows = read_checksum_rows(os.path.join(self.dropzone_path, "registered.sha256"))
         self.assertEqual(len(rows), 1)
-        file_hash, rel_path, registered_at = rows[0]
+        file_hash, rel_path, registered_at, user_name = rows[0]
+        self.assertEqual(user_name, "Tester")
         self.assertEqual(rel_path, os.path.join("Phone1", "2026-09-20", "a.jpg"))
         self.assertRegex(registered_at, r"^\d{8}_\d{6}$")
 

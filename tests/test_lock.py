@@ -120,7 +120,7 @@ class TestScriptsRespectTheLock(unittest.TestCase):
         self.session = os.path.join(self.test_dir, "Workspace", "Gosia_20260925")
         for folder in (self.dropzone, os.path.join(self.session, "Original"), os.path.join(self.session, "Sorted")):
             os.makedirs(folder)
-        self.config = {"dropzone_path": self.dropzone, "excluded_path": self.excluded}
+        self.config = {"dropzone_path": self.dropzone, "excluded_path": self.excluded, "user_name": "Tester"}
         os.mkdir(os.path.join(self.dropzone, LOCK_DIRNAME))
         with open(os.path.join(self.dropzone, "a.jpg"), "wb") as f:
             f.write(b"a")

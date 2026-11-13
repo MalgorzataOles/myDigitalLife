@@ -21,6 +21,7 @@ from scripts.common import (
     write_checksum_pairs,
     append_checksum_lines,
     check_folder_layout,
+    get_user_name,
     normalize_path,
     pipeline_lock,
     TIMESTAMP_FORMAT,
@@ -86,11 +87,13 @@ def main():
         print(f"❌ Execution Halting: {layout_problem}")
         sys.exit(1)
 
+    user_name = get_user_name(config)
+
     with pipeline_lock(dropzone_path, "finalize_curation.py"):
-        process(is_dry_run, session_path, original_path, sorted_path, dropzone_path, excluded_root_dir)
+        process(is_dry_run, session_path, original_path, sorted_path, dropzone_path, excluded_root_dir, user_name)
 
 
-def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path, excluded_root_dir):
+def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path, excluded_root_dir, user_name):
     print("\n" + "~" * 60)
     if is_dry_run:
         print(" 👀 RUNNING IN DRY-RUN MODE: Previewing proposed steps...")
@@ -217,7 +220,7 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
         try:
             append_checksum_lines(
                 exclusion_list_path,
-                [f"{file_hash}\t{rel_path}" for file_hash, rel_path in new_exclusion_records],
+                [f"{file_hash}\t{rel_path}\t{timestamp}\t{user_name}" for file_hash, rel_path in new_exclusion_records],
             )
         except OSError as e:
             print(f"❌ Critical Failure: Could not update {EXCLUDE_FILENAME}: {e}")

@@ -38,6 +38,7 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         self.mock_config = {
             "dropzone_path": self.dropzone_path,
             "excluded_path": self.excluded_path,
+            "user_name": "Tester",
         }
 
         self.registry_path = os.path.join(self.dropzone_path, "registered.sha256")

@@ -18,6 +18,7 @@ from scripts.common import (
     normalize_path,
     has_unsupported_name,
     check_folder_layout,
+    get_user_name,
     pipeline_lock,
     LOCK_DIRNAME,
     is_ignored_dropzone_file,
@@ -47,11 +48,13 @@ def main():
         print(f"❌ Execution Halting: {layout_problem}")
         sys.exit(1)
 
+    user_name = get_user_name(config)
+
     with pipeline_lock(dropzone_path, "register_and_exclude.py"):
-        process(dropzone_path, excluded_root_dir)
+        process(dropzone_path, excluded_root_dir, user_name)
 
 
-def process(dropzone_path, excluded_root_dir):
+def process(dropzone_path, excluded_root_dir, user_name):
     registry_path = os.path.join(dropzone_path, REGISTRY_FILENAME)
     exclusion_list_path = os.path.join(dropzone_path, EXCLUDE_FILENAME)
 
@@ -149,7 +152,7 @@ def process(dropzone_path, excluded_root_dir):
     # is cut off can't leave a half-written row behind.
     if new_entries:
         rows = read_checksum_rows(registry_path)
-        rows += [(file_hash, rel_path, registered_at) for file_hash, rel_path in new_entries]
+        rows += [(file_hash, rel_path, registered_at, user_name) for file_hash, rel_path in new_entries]
         if not write_checksum_pairs(registry_path, rows, f"DROPZONE REGISTRY - UPDATED ON {timestamp}"):
             print("   Nothing was registered in this run. Run this script again.")
             sys.exit(1)

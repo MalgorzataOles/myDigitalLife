@@ -26,6 +26,9 @@ EXCLUDE_FILENAME = "exclude.sha256"
 LOCK_DIRNAME = ".pipeline.lock"
 LOCK_OWNER_FILENAME = "owner.json"
 
+# Value of "user_name" in config.json.template; it must be replaced by your own name.
+PLACEHOLDER_USER_NAME = "CHANGE_ME"
+
 # One timestamp format for batch folder names and registry rows (YYYYMMDD_hhmmss).
 TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
 
@@ -54,6 +57,20 @@ def load_configuration() -> dict:
     except json.JSONDecodeError as e:
         print(f"❌ Syntax Error in config.json: {e}")
         sys.exit(1)
+
+
+def get_user_name(config: dict) -> str:
+    """Returns the person's name from config.json, or stops if it was never filled in."""
+    user_name = config.get("user_name")
+    user_name = user_name.strip() if isinstance(user_name, str) else ""
+    if not user_name or user_name == PLACEHOLDER_USER_NAME:
+        print("❌ Execution Halting: 'user_name' in config.json is missing or still the placeholder.")
+        print(f"   Open {CONFIG_FILE_PATH} and set \"user_name\" to your own name, for example \"Gosia\".")
+        sys.exit(1)
+    if any(char in user_name for char in ("\t", "\n", "\r")):
+        print("❌ Execution Halting: 'user_name' in config.json must not contain tabs or line breaks.")
+        sys.exit(1)
+    return user_name
 
 
 def load_checksum_list(file_path: str, is_local_registry: bool = False) -> set:

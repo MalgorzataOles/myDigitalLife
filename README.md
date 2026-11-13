@@ -10,7 +10,7 @@ myDigitalLife is a small, hash-based pipeline for safely curating family file ba
 myDigitalLife/
   ├── .gitignore                    # Excludes config.json and *.sha256 tracking files
   ├── config.json.template          # Template profile for required storage keys
-  ├── config.json                   # Local private path mapping (git-ignored)
+  ├── config.json                   # Local private paths and your name (git-ignored)
   ├── scripts/
   │     ├── common.py               # Shared hashing/config helpers and file name constants
   │     ├── register_and_exclude.py
@@ -28,8 +28,8 @@ myDigitalLife/
 ```{text}
 /QNAP_Family_Vault/
   ├── Dropzone/    # Intake for raw backups. Treated as immutable - never edited by hand.
-  │                #   registered.sha256  - every file already seen here, with hash, path and registration time
-  │                #   exclude.sha256     - hashes already fully processed in a past session
+  │                #   registered.sha256  - every file already seen here: hash, path, registration time, who registered it
+  │                #   exclude.sha256     - hashes already fully processed: hash, path, time, who finalized it
   └── Excluded/    # Archive. Nothing here is ever read back automatically.
         ├── registration_YYYYMMDD_hhmmss/  # duplicates caught on intake, one folder per run
         └── curation_YYYYMMDD_hhmmss/     # originals archived once a curation session is done
@@ -114,6 +114,8 @@ python3 -m unittest discover -v
 * **Modification Constraint:** Do not alter, edit, or rename anything inside `Dropzone/` by hand. It's treated as an immutable, append-only snapshot; all sorting and deleting happens inside `Workspace/Name_Date/Sorted/`.
 
 * **Dropzone keeps every incoming copy:** if the same file arrives more than once (another phone, another card, another day), every copy is registered and kept until it has been curated. Only content that was already curated in a past session is moved to `Excluded/` on intake. When a session is finalized, every Dropzone copy of a handled file is archived together.
+
+* **Set your name once:** copy `config.json.template` to `config.json` and replace `"user_name": "CHANGE_ME"` with your own name (for example `"Gosia"`). `register_and_exclude.py` and `finalize_curation.py` refuse to run until you do, because they record who registered and who finalized every file.
 
 * **One Dropzone, one config:** `register_and_exclude.py` always operates on `config.json`'s `dropzone_path` - there's no way to point it at a different folder for a given run. This is intentional: with only one Dropzone, a `Workspace` session can never end up ambiguous about which Dropzone it came from.
 

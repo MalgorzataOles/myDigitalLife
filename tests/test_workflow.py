@@ -33,7 +33,7 @@ class WorkflowTestCase(unittest.TestCase):
         os.makedirs(self.dropzone)
         os.makedirs(os.path.join(self.session, "Original"))
         os.makedirs(os.path.join(self.session, "Sorted"))
-        self.config = {"dropzone_path": self.dropzone, "excluded_path": self.excluded}
+        self.config = {"dropzone_path": self.dropzone, "excluded_path": self.excluded, "user_name": "Tester"}
         self.registry = os.path.join(self.dropzone, "registered.sha256")
         self.ledger = os.path.join(self.dropzone, "exclude.sha256")
 
@@ -48,10 +48,13 @@ class WorkflowTestCase(unittest.TestCase):
     def run_script(self, module, *args):
         """Runs a script's main() with the test config and returns what it printed."""
         output = io.StringIO()
-        with patch.object(module, "load_configuration", return_value=self.config, create=True):
-            with patch.object(sys, "argv", [module.__name__, *args]):
-                with redirect_stdout(output):
-                    module.main()
+        try:
+            with patch.object(module, "load_configuration", return_value=self.config, create=True):
+                with patch.object(sys, "argv", [module.__name__, *args]):
+                    with redirect_stdout(output):
+                        module.main()
+        finally:
+            self.last_output = output.getvalue()
         return output.getvalue()
 
     def register(self):
@@ -210,6 +213,50 @@ class TestFolderLayout(unittest.TestCase):
         self.assertIsNotNone(check_folder_layout("/a/Dropzone/x", "/a/Dropzone"))
         self.assertIsNotNone(check_folder_layout("/a/Dropzone", "/a/Excluded", "/a/Dropzone/Workspace/s"))
         self.assertIsNone(check_folder_layout("/a/Dropzone", "/a/Excluded", "/a/Workspace/s"))
+
+
+class TestUserName(WorkflowTestCase):
+    def setUp(self):
+        super().setUp()
+        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+
+    def assert_both_scripts_refuse(self):
+        for run in (self.register, lambda: self.finalize("--dry-run")):
+            with self.assertRaises(SystemExit) as cm:
+                run()
+            self.assertEqual(cm.exception.code, 1)
+            self.assertIn("user_name", self.last_output)
+        self.assertFalse(os.path.exists(self.registry), "nothing may be registered without a name")
+
+    def test_missing_user_name_stops_both_scripts(self):
+        del self.config["user_name"]
+        self.assert_both_scripts_refuse()
+
+    def test_placeholder_user_name_stops_both_scripts(self):
+        self.config["user_name"] = "CHANGE_ME"
+        self.assert_both_scripts_refuse()
+
+    def test_blank_user_name_stops_both_scripts(self):
+        self.config["user_name"] = "   "
+        self.assert_both_scripts_refuse()
+
+    def test_name_is_recorded_in_registry_and_ledger_with_a_timestamp(self):
+        self.config["user_name"] = "Gosia"
+        self.register()
+        rows = read_checksum_rows(self.registry)
+        self.assertEqual(len(rows[0]), 4)
+        self.assertEqual(rows[0][3], "Gosia")
+
+        self.config["user_name"] = "Anna"
+        self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
+        self.finalize("--commit")
+        ledger_rows = read_checksum_rows(self.ledger)
+        self.assertEqual(len(ledger_rows), 1)
+        file_hash, path, timestamp, user = ledger_rows[0]
+        self.assertRegex(timestamp, r"^\d{8}_\d{6}$")
+        self.assertEqual(user, "Anna")
+        archived_batches = os.listdir(self.excluded)
+        self.assertEqual(archived_batches, [f"curation_{timestamp}"], "ledger timestamp must match the folder name")
 
 
 if __name__ == "__main__":
