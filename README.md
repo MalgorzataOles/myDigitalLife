@@ -35,6 +35,12 @@ myDigitalLife/
         └── curation_YYMMDD_hhmm/      # originals archived once a curation session is done
 ```
 
+### Expected state of Dropzone
+
+Every new backup goes into its own `<source>/<date>` folder, for example `Dropzone/Phone1/2026-09-20/`. The scripts don't enforce this, but `finalize_curation.py` relies on it to report unregistered files by folder.
+
+Before `finalize_curation.py` runs, every file in Dropzone must be listed in `registered.sha256`, which means `register_and_exclude.py` has been run after the last dump. Otherwise `finalize_curation.py` aborts and names the `<source>/<date>` folders that still need registering.
+
 `Workspace/` (where you do the actual sorting) isn't part of the storage layout above because it's entirely session-scoped and lives wherever you like - see below.
 
 ## 🔄 Core Pipeline Workflow
@@ -68,7 +74,7 @@ Script | Purpose | When to Run | Command
 -------| ------- | ----------- | -------
 `register_and_exclude.py` | Registers fresh Dropzone items; auto-excludes anything already fully processed (per `exclude.sha256`). | Right after dumping new files from phones, SD cards, or external backups. | `python3 scripts/register_and_exclude.py`
 `preview_pending_removal.py` | Recomputes, from scratch, which files in `Original/` never made it into `Sorted/`, and copies them into `ToBeDeleted/` for review. Never touches `Original/`, `Sorted/` or Dropzone, so it is safe to run as many times as you like. `ToBeDeleted/` is owned by the script and wiped and regenerated on every run, so never keep your own files in it. | Any time during curation, whenever you want a last look before finalizing. | `python3 scripts/preview_pending_removal.py /path/to/Workspace/Name_Date`
-`finalize_curation.py` | Hashes `Original/` and `Sorted/` fresh, cross-references the Dropzone registry, archives matched Dropzone originals, and updates the shared exclusion ledger. | Once your curation of a `Name_Date` session is completely done. | *Dry-Run Preview:*<br>`python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date`<br>*Commit Changes:*<br>`python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date --commit`
+`finalize_curation.py` | Aborts if Dropzone holds files not yet registered (run `register_and_exclude.py` first). Hashes `Original/` and `Sorted/` fresh, cross-references the Dropzone registry, archives matched Dropzone originals, and updates the shared exclusion ledger. | Once your curation of a `Name_Date` session is completely done. | *Dry-Run Preview:*<br>`python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date`<br>*Commit Changes:*<br>`python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date --commit`
 
 There is deliberately no script to create the `Original`/`Sorted` folder pair - `mkdir -p Workspace/Name_Date/{Original,Sorted}` (or the Finder equivalent) is simple enough to do by hand, and there's no hashing state left to initialize.
 
@@ -98,6 +104,8 @@ python3 -m unittest discover -v
 * **Privacy Guardrail:** Never commit your active `config.json` or any file ending in `.sha256` to GitHub. The root `.gitignore` blocks them from ever going public - this matters because this repository is public.
 
 * **Modification Constraint:** Do not alter, edit, or rename anything inside `Dropzone/` by hand. It's treated as an immutable, append-only snapshot; all sorting and deleting happens inside `Workspace/Name_Date/Sorted/`.
+
+* **Dropzone keeps every incoming copy:** if the same file arrives more than once (another phone, another card, another day), every copy is registered and kept until it has been curated. Only content that was already curated in a past session is moved to `Excluded/` on intake. When a session is finalized, every Dropzone copy of a handled file is archived together.
 
 * **One Dropzone, one config:** `register_and_exclude.py` always operates on `config.json`'s `dropzone_path` - there's no way to point it at a different folder for a given run. This is intentional: with only one Dropzone, a `Workspace` session can never end up ambiguous about which Dropzone it came from.
 

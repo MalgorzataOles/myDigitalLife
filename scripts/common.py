@@ -86,6 +86,41 @@ def is_ignored_file(filename: str) -> bool:
     return filename.startswith("._") or filename == ".DS_Store"
 
 
+def is_ignored_dropzone_file(filename: str) -> bool:
+    """Files in Dropzone that are never registered: OS metadata and our own ledgers."""
+    return (is_ignored_file(filename) or
+            filename == REGISTRY_FILENAME or
+            filename == EXCLUDE_FILENAME)
+
+
+def find_unregistered_files(dropzone_path: str, registered_paths: set) -> list:
+    """Returns the sorted Dropzone-relative paths of files not yet listed in the registry."""
+    unregistered = []
+    for root, _, files in os.walk(dropzone_path):
+        for file in files:
+            if is_ignored_dropzone_file(file):
+                continue
+            relative_path = os.path.relpath(os.path.join(root, file), dropzone_path)
+            if relative_path not in registered_paths:
+                unregistered.append(relative_path)
+    return sorted(unregistered)
+
+
+def group_by_source_folder(relative_paths: list, depth: int = 2) -> dict:
+    """
+    Groups Dropzone-relative paths by their first `depth` folders (the expected
+    <source>/<date> layout) and returns {group_label: file_count}. A file with
+    no parent folder is its own group, labelled by its file name.
+    """
+    groups = {}
+    for rel_path in relative_paths:
+        parts = rel_path.split(os.sep)
+        folder_parts = parts[:-1][:depth]
+        label = os.sep.join(folder_parts) + os.sep if folder_parts else rel_path
+        groups[label] = groups.get(label, 0) + 1
+    return dict(sorted(groups.items()))
+
+
 def hash_files_in(folder_path: str) -> dict:
     """Walks a folder and returns {relative_path: hash} for every real file in it."""
     entries = {}

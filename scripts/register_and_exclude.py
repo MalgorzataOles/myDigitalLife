@@ -13,6 +13,7 @@ from scripts.common import (
     calculate_sha256,
     load_configuration,
     load_checksum_list,
+    is_ignored_dropzone_file,
     REGISTRY_FILENAME,
     EXCLUDE_FILENAME,
 )
@@ -61,10 +62,7 @@ def main():
     for root, _, files in os.walk(dropzone_path):
         for file in files:
             # Skip hidden metadata artifacts and the registry files themselves
-            if (file.startswith("._") or
-                file == ".DS_Store" or
-                file == REGISTRY_FILENAME or
-                file == EXCLUDE_FILENAME):
+            if is_ignored_dropzone_file(file):
                 continue
 
             full_path = os.path.join(root, file)

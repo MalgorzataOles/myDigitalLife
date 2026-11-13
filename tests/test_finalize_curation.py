@@ -179,6 +179,70 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         exclusion_data = read_checksum_pairs(self.exclusion_path)
         self.assertEqual(len(exclusion_data), 1, "Only one ledger entry, even though two files were archived.")
 
+    def test_duplicates_in_original_with_single_copy_in_sorted_archive_all_dropzone_copies(self):
+        # Two identical files landed in Dropzone, both were copied into Original/,
+        # and only one of them was kept in Sorted/.
+        first_copy = os.path.join(self.dropzone_path, "phone", "IMG_006.jpg")
+        second_copy = os.path.join(self.dropzone_path, "sdcard", "IMG_006.jpg")
+        self._write(first_copy, b"photo_copied_twice")
+        self._write(second_copy, b"photo_copied_twice")
+        from scripts.common import calculate_sha256
+        file_hash = calculate_sha256(first_copy)
+        with open(self.registry_path, "w", encoding="utf-8") as f:
+            f.write(f"{file_hash}\tphone/IMG_006.jpg\n")
+            f.write(f"{file_hash}\tsdcard/IMG_006.jpg\n")
+
+        self._write(os.path.join(self.original_path, "phone", "IMG_006.jpg"), b"photo_copied_twice")
+        self._write(os.path.join(self.original_path, "sdcard", "IMG_006.jpg"), b"photo_copied_twice")
+        self._write(os.path.join(self.sorted_path, "Kept", "IMG_006.jpg"), b"photo_copied_twice")
+
+        self._run(commit=True)
+
+        self.assertFalse(os.path.exists(first_copy))
+        self.assertFalse(os.path.exists(second_copy))
+        self.assertEqual(len(read_checksum_pairs(self.registry_path)), 0)
+        exclusion_data = read_checksum_pairs(self.exclusion_path)
+        self.assertEqual(exclusion_data, [(file_hash, "Kept/IMG_006.jpg")])
+
+    def test_aborts_when_dropzone_has_unregistered_files_without_changing_anything(self):
+        registered_file = os.path.join(self.dropzone_path, "IMG_007.jpg")
+        unregistered_file = os.path.join(self.dropzone_path, "new_dump", "IMG_008.jpg")
+        self._write(registered_file, b"registered_photo")
+        self._write(unregistered_file, b"not_yet_registered_photo")
+        self._write(os.path.join(self.dropzone_path, ".DS_Store"), b"ignored")
+        from scripts.common import calculate_sha256
+        file_hash = calculate_sha256(registered_file)
+        with open(self.registry_path, "w", encoding="utf-8") as f:
+            f.write(f"{file_hash}\tIMG_007.jpg\n")
+
+        self._write(os.path.join(self.original_path, "IMG_007.jpg"), b"registered_photo")
+        self._write(os.path.join(self.sorted_path, "IMG_007.jpg"), b"registered_photo")
+
+        with self.assertRaises(SystemExit) as cm:
+            self._run(commit=True)
+        self.assertEqual(cm.exception.code, 1)
+
+        self.assertTrue(os.path.exists(registered_file))
+        self.assertTrue(os.path.exists(unregistered_file))
+        self.assertEqual(len(read_checksum_pairs(self.registry_path)), 1)
+        self.assertFalse(os.path.exists(self.exclusion_path))
+
+    def test_group_by_source_folder_uses_two_levels_and_counts_files(self):
+        from scripts.common import group_by_source_folder
+        paths = [
+            os.path.join("Phone1", "2026-09-20", "a.jpg"),
+            os.path.join("Phone1", "2026-09-20", "sub", "b.jpg"),
+            os.path.join("Phone1", "2026-09-21", "c.jpg"),
+            os.path.join("SDCard", "d.jpg"),
+            "loose.jpg",
+        ]
+        self.assertEqual(group_by_source_folder(paths), {
+            os.path.join("Phone1", "2026-09-20") + os.sep: 2,
+            os.path.join("Phone1", "2026-09-21") + os.sep: 1,
+            "SDCard" + os.sep: 1,
+            "loose.jpg": 1,
+        })
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,6 +13,9 @@ if REPO_ROOT not in sys.path:
 from scripts.common import (
     load_configuration,
     read_checksum_pairs,
+    load_checksum_list,
+    find_unregistered_files,
+    group_by_source_folder,
     hash_files_in,
     REGISTRY_FILENAME,
     EXCLUDE_FILENAME,
@@ -89,9 +92,23 @@ def main():
     print(f" Excluded folder : {excluded_root_dir}")
     print("~" * 60 + "\n")
 
-    # Step 0 (always first, before any mutation): refuse to continue if the
-    # same content was filed into two different places inside Sorted/ - we
-    # have no way to know which final path is the "real" one.
+    # Step 0a: finalizing only archives files listed in the registry, so a
+    # Dropzone file that was never registered would silently be left behind.
+    registry_path = os.path.join(dropzone_path, REGISTRY_FILENAME)
+    unregistered = find_unregistered_files(
+        dropzone_path, load_checksum_list(registry_path, is_local_registry=True)
+    )
+    if unregistered:
+        print("❌ Execution Halting: These Dropzone folders contain files that are not registered yet:")
+        for label, count in group_by_source_folder(unregistered).items():
+            print(f"     - {label}  ({count} file{'s' if count != 1 else ''})")
+        print("\n   Run register_and_exclude.py first, then run this again.")
+        print("   Nothing has been changed.\n")
+        sys.exit(1)
+
+    # Step 0b: refuse to continue if the same content was filed into two
+    # different places inside Sorted/ - we have no way to know which final
+    # path is the "real" one.
     print("🔎 Hashing Sorted/ ...")
     sorted_entries = hash_files_in(sorted_path)
     duplicates = find_duplicate_hashes(sorted_entries)
@@ -119,7 +136,6 @@ def main():
 
     handled_hashes = set(sorted_entries.values()) | set(original_entries.values())
 
-    registry_path = os.path.join(dropzone_path, REGISTRY_FILENAME)
     exclusion_list_path = os.path.join(dropzone_path, EXCLUDE_FILENAME)
 
     # hash -> every Dropzone-relative path registered under it (usually one,
