@@ -1,0 +1,7 @@
+{
+    "dropzone_path": "/path/to/your/storage/Dropzone",
+    "excluded_path": "/path/to/your/storage/Excluded",
+    "user_name": "CHANGE_ME",
+    "log_path": "/path/to/your/storage/Logs",
+    "state_path": "/path/to/your/storage/State"
+}
