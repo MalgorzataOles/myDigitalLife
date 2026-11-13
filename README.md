@@ -134,6 +134,49 @@ rsync -avnc "/path/to/Workspace/Name_Date/Sorted/" "/path/to/home_folder/"
 
 The slash after `Sorted/` matters: it copies the contents of `Sorted/` (your folders), while `Sorted` without a slash would create an extra `Sorted` folder inside the home folder. A folder that already exists in the home folder is merged into, not replaced. If step 3 lists a file, it was not copied, or a different file with the same name was already there; fix that before running `finalize_curation.py --commit`.
 
+## ☁️ Syncing with Dropbox (optional)
+
+This is for a setup where the scripts run on a Mac or Linux computer with the QNAP mounted, while devices upload to Dropbox and people curate away from home. The sync itself is done on the QNAP (for example with Hybrid Backup Sync, HBS 3), so the scripts and the sync tool work on the same files. Menu names differ between QTS versions, so set it up first with a throwaway session and batch, not with real data.
+
+| Folder | Sync direction | Why |
+|---|---|---|
+| `Dropzone/` | two-way | devices upload into it, and files moved out by the scripts disappear from Dropbox too (a one-way copy would bring them back on every cycle) |
+| `Workspace/` | two-way | curation away from home |
+| Home folder (curated library) | one-way, QNAP to Dropbox | Dropbox is only the second copy; changes made in Dropbox must not alter the QNAP. If the job can keep files that were deleted on the QNAP, switch that on |
+| `State/` | one-way, QNAP to Dropbox | gives `registered.sha256` and `exclude.sha256` a versioned backup that nobody on the Dropbox side can change or delete |
+| `Logs/` | one-way, QNAP to Dropbox | read the logs from anywhere |
+| `Excluded/` | not synced | archive, written by the scripts only |
+
+**Rules for the sync jobs**
+- Conflict policy: keep both or rename, never overwrite or "newest wins".
+- Use the shortest sync interval the job allows. Two-way sync is not instant.
+- If HBS can exclude folders by name, exclude `Original/` from the `Workspace/` job: the untouched copy then exists only on the QNAP (nobody can edit it remotely) and Dropbox space is saved. Otherwise every batch takes about three times its size in Dropbox (the raw files, `Original/` and `Sorted/`).
+- Nothing in `State/` may ever be edited or deleted by hand, on any computer.
+
+**Rules for everyone using the scripts**
+- Run the scripts on the QNAP path (the mounted share), never on a Dropbox copy of a folder.
+- Run `register_and_exclude.py` only when the Dropzone sync has finished (the Dropbox app says "up to date" and the HBS job is idle). A file that is hashed while it is still arriving gets a wrong hash in the registry, and its Dropzone original is then never archived.
+- Before `finalize_curation.py`, wait until the `Workspace/` sync has finished. If it finds "conflicted copy" files it stops (see below).
+- Uploads can arrive at any time. If `finalize_curation.py` stops because Dropzone holds unregistered files, run `register_and_exclude.py` once the sync is idle, then run it again.
+- Camera upload apps put files in one flat folder, not in `<source>/<date>` folders. The scripts still work; only the grouped messages and the empty-folder cleanup assume `<source>/<date>`.
+- After `--commit` and copying to the home folder, delete the session folder in `Workspace/`. The deletion syncs and frees the Dropbox space.
+
+### What is a "conflicted copy"?
+
+If the same file is changed in two places before the sync has caught up (you rename or edit a photo in `Sorted/` on your laptop while the QNAP, or another person, changes the same file), Dropbox cannot tell which version is right. It keeps both and renames one of them, for example `photo (Anna's conflicted copy 2026-11-13).jpg`. Dropbox's other variant is `photo (Case Conflict 1).jpg`, and folders can get such names too. A sync job set to "keep both" does the same. The names are a sign that two versions of one file exist and nobody has chosen yet.
+
+This matters because finalizing would put both versions into the home folder, or stop with a confusing duplicate message. So `finalize_curation.py` (also with `--dry-run`) checks `Original/` and `Sorted/` first. If a file or folder name contains "conflicted copy" or "case conflict" (upper or lower case), it stops, changes nothing, and lists the files.
+
+What to do for each listed file:
+1. Open both versions and decide which one is right.
+2. Delete the other one.
+3. If you keep the one with the conflict name, rename it so that the words "conflicted copy" are gone.
+4. Run `finalize_curation.py` again.
+
+A file that really has those words in its name for another reason must be renamed too, otherwise the check keeps stopping.
+
+Dropbox is a sync service, not a full backup: it keeps deleted files and old versions only for a limited time. Keep that in mind when you rely on it as the second copy.
+
 ## 🧪 Running Automated Unit Tests
 
 Validate your pipeline modifications inside an isolated temporary sandbox before committing changes to GitHub:
@@ -160,7 +203,7 @@ python3 -m unittest discover -v
 
 * **Every script is safe to run again** after a crash, a closed laptop or a lost network connection. `register_and_exclude.py` and `finalize_curation.py` write their lists in a way that can't leave them half-written, and `finalize_curation.py` picks up where it stopped. Files already moved to `Excluded/` stay there (one cut off mid-copy may be left incomplete there; the original is still in Dropzone and is moved again on the re-run).
 
-* **The scripts stop instead of guessing.** `finalize_curation.py` refuses to run, and changes nothing, if a file in `Original/` or `Sorted/` can't be read, if Dropzone contains unregistered files, or if the same content is in `Sorted/` twice. Both scripts refuse folder setups where `Excluded/` or a session folder lies inside Dropzone.
+* **The scripts stop instead of guessing.** `finalize_curation.py` refuses to run, and changes nothing, if a file in `Original/` or `Sorted/` can't be read, if Dropzone contains unregistered files, if `Original/` or `Sorted/` contain Dropbox "conflicted copy" files, or if the same content is in `Sorted/` twice. Both scripts refuse folder setups where `Excluded/` or a session folder lies inside Dropzone.
 
 * **Empty folders are cleaned up:** when `register_and_exclude.py` or `finalize_curation.py` moves the last file out of a `<source>/<date>` folder, that folder is removed (hidden Finder/Windows files in it don't count). Only folders the run itself emptied are touched, and the `<source>` folder (for example `Phone1/`) always stays. The dry run lists the folders it would remove, and the log lists the ones removed.
 

@@ -494,5 +494,44 @@ class TestStateFolder(WorkflowTestCase):
         self.assertFalse(os.path.exists(self.registry))
 
 
+class TestSyncConflicts(WorkflowTestCase):
+    def setUp(self):
+        super().setUp()
+        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+        self.register()
+        self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
+
+    def assert_finalize_stops_on(self, relative_path):
+        self.write(os.path.join(self.session, relative_path), b"edited elsewhere")
+        with self.assertRaises(SystemExit) as cm:
+            self.finalize("--commit")
+        self.assertEqual(cm.exception.code, 1)
+        self.assertIn("conflicted copy", self.last_output)
+        self.assertIn(os.path.basename(relative_path), self.last_output)
+        self.assertEqual(len(read_checksum_rows(self.registry)), 1)
+        self.assertFalse(os.path.exists(self.ledger))
+
+    def test_conflicted_copy_in_sorted_stops_finalize_without_changes(self):
+        self.assert_finalize_stops_on("Sorted/a (Anna's conflicted copy 2026-11-13).jpg")
+
+    def test_conflicted_copy_in_original_stops_finalize_without_changes(self):
+        self.assert_finalize_stops_on("Original/a (Anna's conflicted copy 2026-11-13).jpg")
+
+    def test_dropbox_case_conflict_and_upper_case_are_recognized(self):
+        self.assert_finalize_stops_on("Sorted/b (Case Conflict 1).jpg")
+
+    def test_conflicted_folder_is_recognized_too(self):
+        self.assert_finalize_stops_on("Sorted/Holiday (Conflicted Copy)/b.jpg")
+
+    def test_dry_run_stops_as_well(self):
+        self.write(os.path.join(self.session, "Sorted", "b (conflicted copy).jpg"), b"b")
+        with self.assertRaises(SystemExit):
+            self.finalize("--dry-run")
+
+    def test_normal_names_and_finalize_still_work(self):
+        self.finalize("--commit")
+        self.assertEqual(len(read_checksum_rows(self.registry)), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

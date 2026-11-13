@@ -16,6 +16,7 @@ from scripts.common import (
     read_checksum_rows,
     load_checksum_list,
     find_unregistered_files,
+    find_conflicted_copies,
     describe_folder_counts,
     folders_that_become_empty,
     remove_folders,
@@ -159,7 +160,21 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
         print("   Nothing has been changed.\n")
         sys.exit(1)
 
-    # Step 0b: refuse to continue if the same content was filed into two
+    # Step 0b: a sync conflict means two versions of one file exist and someone
+    # has to choose; finalizing now would copy both into the library.
+    conflicts = [("Original/", rel) for rel in find_conflicted_copies(original_path)]
+    conflicts += [("Sorted/", rel) for rel in find_conflicted_copies(sorted_path)]
+    if conflicts:
+        print("❌ Execution Halting: Files marked as sync conflicts (\"conflicted copy\") were found.")
+        print("   Dropbox creates them when the same file was changed in two places before it synced.")
+        for folder, rel_path in conflicts:
+            print(f"     - {folder}{rel_path}")
+        print("\n   For each one, decide which version is right: keep it (rename it so the")
+        print("   words 'conflicted copy' are gone) and delete the other. Then run this again.")
+        print("   Nothing has been changed.\n")
+        sys.exit(1)
+
+    # Step 0c: refuse to continue if the same content was filed into two
     # different places inside Sorted/ - we have no way to know which final
     # path is the "real" one.
     print("🔎 Hashing Sorted/ ...")

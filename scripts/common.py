@@ -511,6 +511,24 @@ def group_by_source_folder(relative_paths: list, depth: int = 2) -> dict:
     return dict(sorted(groups.items()))
 
 
+# Dropbox adds these words to the name of a file or folder when it cannot decide
+# which of two versions is the right one ("photo (Anna's conflicted copy 2026-11-13).jpg").
+CONFLICT_MARKERS = ("conflicted copy", "case conflict")
+
+
+def find_conflicted_copies(folder_path: str) -> list:
+    """Returns the sorted relative paths of files whose name, or whose folder name, marks a sync conflict."""
+    found = []
+    for root, _, files in os.walk(folder_path):
+        for file in files:
+            if is_ignored_file(file):
+                continue
+            relative_path = os.path.relpath(os.path.join(root, file), folder_path)
+            if any(marker in relative_path.lower() for marker in CONFLICT_MARKERS):
+                found.append(relative_path)
+    return sorted(found)
+
+
 def describe_folder_counts(relative_paths: list) -> list:
     """Returns display lines like 'Phone1/2026-09-20/  (432 files)', one per source folder."""
     return [
