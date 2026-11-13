@@ -117,4 +117,12 @@ python3 -m unittest discover -v
 
 * **Shared file names:** both scripts take the names `registered.sha256` and `exclude.sha256` from `scripts/common.py`.
 
+* **Every script is safe to run again** after a crash, a closed laptop or a lost network connection. `register_and_exclude.py` and `finalize_curation.py` write their lists in a way that can't leave them half-written, and `finalize_curation.py` picks up where it stopped. Files already moved to `Excluded/` stay there (one cut off mid-copy may be left incomplete there; the original is still in Dropzone and is moved again on the re-run).
+
+* **The scripts stop instead of guessing.** `finalize_curation.py` refuses to run, and changes nothing, if a file in `Original/` or `Sorted/` can't be read, if Dropzone contains unregistered files, or if the same content is in `Sorted/` twice. Both scripts refuse folder setups where `Excluded/` or a session folder lies inside Dropzone.
+
+* **Files that are skipped:** macOS and Windows metadata (`._*`, `.DS_Store`, `Thumbs.db`, `desktop.ini`). Files whose names contain a tab or line break are not registered; the summary lists them so you can rename them.
+
+* **One person at a time:** run `register_and_exclude.py` and `finalize_curation.py` only when nobody else is running either of them on the same Dropzone.
+
 * **Resetting the registry:** If `registered.sha256` ever becomes corrupted or misaligned, delete it. The next `register_and_exclude.py` run will safely rebuild it from whatever is actually in Dropzone (already-excluded content will just be skipped again via `exclude.sha256`).

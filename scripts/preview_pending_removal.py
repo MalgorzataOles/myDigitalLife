@@ -41,11 +41,12 @@ def main():
     print(f" Preview folder  : {preview_path}")
     print("~" * 60 + "\n")
 
+    unreadable = []
     print("🔎 Hashing Sorted/ ...")
-    sorted_hashes = set(hash_files_in(sorted_path).values())
+    sorted_hashes = set(hash_files_in(sorted_path, unreadable).values())
 
     print("🔎 Hashing Original/ ...")
-    original_entries = hash_files_in(original_path)
+    original_entries = hash_files_in(original_path, unreadable)
 
     pending_removal = sorted(
         rel_path for rel_path, file_hash in original_entries.items()
@@ -78,7 +79,14 @@ def main():
         print("  To keep a file after all: copy it from ToBeDeleted/ into Sorted/")
         print("  before running finalize_curation.py.")
         print("─" * 70)
-    print("=" * 70 + "\n")
+    print("=" * 70)
+    if unreadable:
+        print(f" ⚠️  {len(unreadable)} file(s) could not be read and are NOT part of this preview:")
+        for rel_path in sorted(unreadable):
+            print(f"     - {rel_path}")
+        print("     finalize_curation.py will refuse to run until this is fixed.")
+        print("=" * 70)
+    print()
 
 
 if __name__ == "__main__":

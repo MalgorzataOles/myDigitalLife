@@ -13,6 +13,11 @@ from scripts.common import (
     calculate_sha256,
     load_configuration,
     load_checksum_list,
+    read_checksum_rows,
+    write_checksum_pairs,
+    normalize_path,
+    has_unsupported_name,
+    check_folder_layout,
     is_ignored_dropzone_file,
     describe_folder_counts,
     TIMESTAMP_FORMAT,
@@ -35,12 +40,19 @@ def main():
         print("❌ Execution Halting: 'excluded_path' configuration is completely missing from config.json.")
         sys.exit(1)
 
+    layout_problem = check_folder_layout(dropzone_path, excluded_root_dir)
+    if layout_problem:
+        print(f"❌ Execution Halting: {layout_problem}")
+        sys.exit(1)
+
     registry_path = os.path.join(dropzone_path, REGISTRY_FILENAME)
     exclusion_list_path = os.path.join(dropzone_path, EXCLUDE_FILENAME)
 
     # Pre-load datasets into memory securely before header generation
     exclusion_set = load_checksum_list(exclusion_list_path, is_local_registry=False)
-    registered_paths = load_checksum_list(registry_path, is_local_registry=True)
+    registered_paths = {
+        normalize_path(path) for path in load_checksum_list(registry_path, is_local_registry=True)
+    }
 
     # Dynamic creation of the timestamped isolation folder inside Excluded/
     run_started = datetime.now()
@@ -61,6 +73,7 @@ def main():
     new_entries = []
     excluded_files_log = []
     unreadable_files = []
+    badly_named_files = []
     moved_files = []
     failed_moves = []
 
@@ -76,7 +89,12 @@ def main():
             relative_path = os.path.relpath(full_path, dropzone_path)
 
             # Case A: Already logged locally, skip configuration check
-            if relative_path in registered_paths:
+            if normalize_path(relative_path) in registered_paths:
+                continue
+
+            # Tabs/line breaks in a name would corrupt the registry file format
+            if has_unsupported_name(relative_path):
+                badly_named_files.append(relative_path)
                 continue
 
             # Case B: Brand new file. Calculate signature
@@ -119,13 +137,14 @@ def main():
                 failed_moves.append(rel_path)
 
     # Save and commit new unique additions to the Dropzone registry
+    # The registry is replaced in one step (never appended to), so a run that
+    # is cut off can't leave a half-written row behind.
     if new_entries:
-        try:
-            with open(registry_path, "a", encoding="utf-8") as f:
-                for file_hash, rel_path in new_entries:
-                    f.write(f"{file_hash}\t{rel_path}\t{registered_at}\n")
-        except (IOError, OSError) as e:
-            print(f"❌ Critical Failure: Could not append entries to local registry: {e}")
+        rows = read_checksum_rows(registry_path)
+        rows += [(file_hash, rel_path, registered_at) for file_hash, rel_path in new_entries]
+        if not write_checksum_pairs(registry_path, rows, f"DROPZONE REGISTRY - UPDATED ON {timestamp}"):
+            print("   Nothing was registered in this run. Run this script again.")
+            sys.exit(1)
 
     # Output clear status report
     print("\n" + "=" * 70)
@@ -142,6 +161,11 @@ def main():
         for rel_path in sorted(failed_moves):
             print(f"     - {rel_path}")
         print("     They are still in Dropzone and were not registered. Run this script again.")
+    if badly_named_files:
+        print(f" ⚠️  Files NOT registered (name contains a tab or line break): {len(badly_named_files)}")
+        for rel_path in sorted(badly_named_files):
+            print(f"     - {rel_path!r}")
+        print("     Rename them, then run this script again.")
     if unreadable_files:
         print(f" ⚠️  Files NOT registered (could not be read): {len(unreadable_files)}")
         for rel_path in sorted(unreadable_files):

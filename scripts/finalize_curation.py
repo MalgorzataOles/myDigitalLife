@@ -18,6 +18,9 @@ from scripts.common import (
     find_unregistered_files,
     describe_folder_counts,
     hash_files_in,
+    write_checksum_pairs,
+    append_checksum_lines,
+    check_folder_layout,
     TIMESTAMP_FORMAT,
     REGISTRY_FILENAME,
     EXCLUDE_FILENAME,
@@ -25,21 +28,6 @@ from scripts.common import (
 
 ORIGINAL_DIRNAME = "Original"
 SORTED_DIRNAME = "Sorted"
-
-
-def write_checksum_pairs(file_path: str, records: list, header_text: str) -> None:
-    """Replaces a checksum file in one step, so an interruption never leaves it half-written."""
-    temp_path = f"{file_path}.tmp"
-    try:
-        with open(temp_path, "w", encoding="utf-8") as f:
-            f.write(f"# {header_text}\n")
-            for record in records:
-                f.write("\t".join(record) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(temp_path, file_path)
-    except (IOError, OSError) as e:
-        print(f"❌ Critical Failure: Could not write updates to {file_path}: {e}")
 
 
 def find_duplicate_hashes(entries: dict) -> dict:
@@ -91,6 +79,11 @@ def main():
         print("❌ Execution Halting: 'excluded_path' configuration is missing from config.json.")
         sys.exit(1)
 
+    layout_problem = check_folder_layout(dropzone_path, excluded_root_dir, session_path)
+    if layout_problem:
+        print(f"❌ Execution Halting: {layout_problem}")
+        sys.exit(1)
+
     print("\n" + "~" * 60)
     if is_dry_run:
         print(" 👀 RUNNING IN DRY-RUN MODE: Previewing proposed steps...")
@@ -120,7 +113,8 @@ def main():
     # different places inside Sorted/ - we have no way to know which final
     # path is the "real" one.
     print("🔎 Hashing Sorted/ ...")
-    sorted_entries = hash_files_in(sorted_path)
+    unreadable = []
+    sorted_entries = hash_files_in(sorted_path, unreadable)
     duplicates = find_duplicate_hashes(sorted_entries)
     if duplicates:
         print("\n❌ Execution Halting: The same file content exists in more than one place inside Sorted/:")
@@ -133,7 +127,17 @@ def main():
         sys.exit(1)
 
     print("🔎 Hashing Original/ ...")
-    original_entries = hash_files_in(original_path)
+    original_entries = hash_files_in(original_path, unreadable)
+
+    # A file we could not read would silently count as "not handled", so
+    # stop instead of finalizing a session we only partly understand.
+    if unreadable:
+        print("\n❌ Execution Halting: These files in Original/ or Sorted/ could not be read:")
+        for rel_path in sorted(unreadable):
+            print(f"     - {rel_path}")
+        print("\n   Fix the problem (or remove the files) and run this again.")
+        print("   Nothing has been changed.\n")
+        sys.exit(1)
 
     # hash -> the one path used to annotate the exclusion ledger entry.
     # Sorted wins when a hash exists in both, since that's where the file
@@ -180,11 +184,13 @@ def main():
     # was interrupted, running this again completes the remaining stages.
     if not is_dry_run and new_exclusion_records:
         try:
-            with open(exclusion_list_path, "a", encoding="utf-8") as f:
-                for file_hash, rel_path in new_exclusion_records:
-                    f.write(f"{file_hash}\t{rel_path}\n")
-        except (IOError, OSError) as e:
+            append_checksum_lines(
+                exclusion_list_path,
+                [f"{file_hash}\t{rel_path}" for file_hash, rel_path in new_exclusion_records],
+            )
+        except OSError as e:
             print(f"❌ Critical Failure: Could not update {EXCLUDE_FILENAME}: {e}")
+            print("   Nothing has been moved. Run this again.")
             sys.exit(1)
 
     print("\n🚚 Files matched by this curation session:")
@@ -197,17 +203,25 @@ def main():
         if is_dry_run:
             print(f"   [WILL MOVE] Dropzone/{rel_path} -> Excluded/curation_{timestamp}/{rel_path}")
         else:
-            os.makedirs(os.path.dirname(destination_path), exist_ok=True)
-            shutil.move(source_full_path, destination_path)
+            try:
+                os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+                shutil.move(source_full_path, destination_path)
+            except OSError as e:
+                print(f"   ❌ Could not move {rel_path}: {e}")
+                print("\n   Stopped. The files moved so far are safe in Excluded/.")
+                print("   Fix the problem and run this again - it picks up where it stopped.")
+                sys.exit(1)
             print(f"   [MOVED] -> {rel_path}")
         moved_count += 1
 
     if not is_dry_run:
-        write_checksum_pairs(
+        if not write_checksum_pairs(
             registry_path,
             remaining_registry_records,
-            f"ACTIVE DROPZONE REGISTRY - UPDATED ON {datetime.now().strftime(TIMESTAMP_FORMAT)}",
-        )
+            f"DROPZONE REGISTRY - UPDATED ON {datetime.now().strftime(TIMESTAMP_FORMAT)}",
+        ):
+            print("   The files were moved, but the registry was not updated. Run this again.")
+            sys.exit(1)
 
     print("\n" + "=" * 70)
     if is_dry_run:
