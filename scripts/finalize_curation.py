@@ -13,10 +13,12 @@ if REPO_ROOT not in sys.path:
 from scripts.common import (
     load_configuration,
     read_checksum_pairs,
+    read_checksum_rows,
     load_checksum_list,
     find_unregistered_files,
     describe_folder_counts,
     hash_files_in,
+    TIMESTAMP_FORMAT,
     REGISTRY_FILENAME,
     EXCLUDE_FILENAME,
 )
@@ -31,8 +33,8 @@ def write_checksum_pairs(file_path: str, records: list, header_text: str) -> Non
     try:
         with open(temp_path, "w", encoding="utf-8") as f:
             f.write(f"# {header_text}\n")
-            for file_hash, rel_path in records:
-                f.write(f"{file_hash}\t{rel_path}\n")
+            for record in records:
+                f.write("\t".join(record) + "\n")
             f.flush()
             os.fsync(f.fileno())
         os.replace(temp_path, file_path)
@@ -146,12 +148,12 @@ def main():
     # but two identical files dumped together in the same run can share a
     # hash - if the content is handled, every physical copy gets archived).
     registry_by_hash = defaultdict(list)
-    for file_hash, rel_path in read_checksum_pairs(registry_path):
-        registry_by_hash[file_hash].append(rel_path)
+    for file_hash, rel_path, *extra_columns in read_checksum_rows(registry_path):
+        registry_by_hash[file_hash].append((rel_path, tuple(extra_columns)))
 
     existing_exclusion_hashes = {file_hash for file_hash, _ in read_checksum_pairs(exclusion_list_path)}
 
-    timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime(TIMESTAMP_FORMAT)
     current_batch_excluded_dir = os.path.join(excluded_root_dir, f"curation_{timestamp}")
 
     files_to_move = []
@@ -160,14 +162,14 @@ def main():
 
     for file_hash, dropzone_paths in registry_by_hash.items():
         if file_hash in handled_hashes:
-            for rel_path in dropzone_paths:
+            for rel_path, _ in dropzone_paths:
                 files_to_move.append((os.path.join(dropzone_path, rel_path), rel_path))
             if file_hash not in existing_exclusion_hashes:
                 annotated_path = sorted_hash_to_path.get(file_hash) or original_hash_to_path.get(file_hash)
                 new_exclusion_records.append((file_hash, annotated_path))
         else:
-            for rel_path in dropzone_paths:
-                remaining_registry_records.append((file_hash, rel_path))
+            for rel_path, extra_columns in dropzone_paths:
+                remaining_registry_records.append((file_hash, rel_path, *extra_columns))
 
     # Order matters for safe re-runs after an interruption: record the ledger
     # first, move files second, and rewrite the registry last. Whatever stage
@@ -200,7 +202,7 @@ def main():
         write_checksum_pairs(
             registry_path,
             remaining_registry_records,
-            f"ACTIVE DROPZONE REGISTRY - UPDATED ON {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"ACTIVE DROPZONE REGISTRY - UPDATED ON {datetime.now().strftime(TIMESTAMP_FORMAT)}",
         )
 
     print("\n" + "=" * 70)

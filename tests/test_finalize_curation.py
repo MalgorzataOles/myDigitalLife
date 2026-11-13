@@ -299,5 +299,28 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         self._assert_fully_finalized()
 
 
+    def test_remaining_registry_rows_keep_their_registration_timestamp(self):
+        from scripts.common import calculate_sha256, read_checksum_rows
+        handled = os.path.join(self.dropzone_path, "Phone1", "handled.jpg")
+        kept = os.path.join(self.dropzone_path, "Phone1", "kept.jpg")
+        legacy = os.path.join(self.dropzone_path, "Phone1", "legacy.jpg")
+        self._write(handled, b"handled_photo")
+        self._write(kept, b"kept_in_dropzone")
+        self._write(legacy, b"no_timestamp_row")
+        with open(self.registry_path, "w", encoding="utf-8") as f:
+            f.write(f"{calculate_sha256(handled)}\tPhone1/handled.jpg\t20260920_100000\n")
+            f.write(f"{calculate_sha256(kept)}\tPhone1/kept.jpg\t20260921_113015\n")
+            f.write(f"{calculate_sha256(legacy)}\tPhone1/legacy.jpg\n")
+        self._write(os.path.join(self.sorted_path, "handled.jpg"), b"handled_photo")
+
+        self._run(commit=True)
+
+        rows = read_checksum_rows(self.registry_path)
+        self.assertEqual(
+            sorted(row[1:] for row in rows),
+            [("Phone1/kept.jpg", "20260921_113015"), ("Phone1/legacy.jpg",)],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

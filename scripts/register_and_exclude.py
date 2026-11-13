@@ -15,6 +15,7 @@ from scripts.common import (
     load_checksum_list,
     is_ignored_dropzone_file,
     describe_folder_counts,
+    TIMESTAMP_FORMAT,
     REGISTRY_FILENAME,
     EXCLUDE_FILENAME,
 )
@@ -42,7 +43,9 @@ def main():
     registered_paths = load_checksum_list(registry_path, is_local_registry=True)
 
     # Dynamic creation of the timestamped isolation folder inside Excluded/
-    timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+    run_started = datetime.now()
+    timestamp = run_started.strftime(TIMESTAMP_FORMAT)
+    registered_at = timestamp
     current_batch_excluded_dir = os.path.join(excluded_root_dir, f"registration_{timestamp}")
 
     # Clean, literal startup dashboard
@@ -120,7 +123,7 @@ def main():
         try:
             with open(registry_path, "a", encoding="utf-8") as f:
                 for file_hash, rel_path in new_entries:
-                    f.write(f"{file_hash}\t{rel_path}\n")
+                    f.write(f"{file_hash}\t{rel_path}\t{registered_at}\n")
         except (IOError, OSError) as e:
             print(f"❌ Critical Failure: Could not append entries to local registry: {e}")
 

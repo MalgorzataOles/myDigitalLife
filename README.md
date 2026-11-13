@@ -28,11 +28,11 @@ myDigitalLife/
 ```{text}
 /QNAP_Family_Vault/
   ├── Dropzone/    # Intake for raw backups. Treated as immutable - never edited by hand.
-  │                #   registered.sha256  - every file already seen here
+  │                #   registered.sha256  - every file already seen here, with hash, path and registration time
   │                #   exclude.sha256     - hashes already fully processed in a past session
   └── Excluded/    # Archive. Nothing here is ever read back automatically.
-        ├── registration_YYMMDD_hhmmss/  # duplicates caught on intake, one folder per run
-        └── curation_YYMMDD_hhmmss/     # originals archived once a curation session is done
+        ├── registration_YYYYMMDD_hhmmss/  # duplicates caught on intake, one folder per run
+        └── curation_YYYYMMDD_hhmmss/     # originals archived once a curation session is done
 ```
 
 ### Expected state of Dropzone

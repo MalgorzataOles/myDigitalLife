@@ -13,6 +13,9 @@ CONFIG_FILE_PATH = os.path.join(REPO_ROOT, "config.json")
 REGISTRY_FILENAME = "registered.sha256"
 EXCLUDE_FILENAME = "exclude.sha256"
 
+# One timestamp format for batch folder names and registry rows (YYYYMMDD_hhmmss).
+TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
+
 
 def calculate_sha256(file_path: str) -> str:
     """Generates a secure SHA-256 fingerprint for a specified file."""
@@ -80,6 +83,24 @@ def read_checksum_pairs(file_path: str) -> list:
         except (IOError, OSError) as e:
             print(f"⚠️  Warning: Error reading file {file_path}: {e}")
     return records
+
+
+def read_checksum_rows(file_path: str) -> list:
+    """Reads a tab-separated checksum file, keeping every column of every data row."""
+    rows = []
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    cleaned = line.strip()
+                    if not cleaned or cleaned.startswith("#"):
+                        continue
+                    parts = cleaned.split("\t")
+                    if len(parts) >= 2:
+                        rows.append(tuple(parts))
+        except (IOError, OSError) as e:
+            print(f"⚠️  Warning: Error reading file {file_path}: {e}")
+    return rows
 
 
 def is_ignored_file(filename: str) -> bool:

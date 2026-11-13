@@ -203,5 +203,24 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(stuck_dir, "stuck.jpg")))
 
 
+    @patch("scripts.register_and_exclude.load_configuration")
+    def test_registry_rows_carry_a_registration_timestamp(self, mock_load_config):
+        import re
+        from scripts.common import read_checksum_rows
+        mock_load_config.return_value = self.mock_config
+        path = os.path.join(self.dropzone_path, "Phone1", "2026-09-20", "a.jpg")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(b"a")
+
+        main()
+
+        rows = read_checksum_rows(os.path.join(self.dropzone_path, "registered.sha256"))
+        self.assertEqual(len(rows), 1)
+        file_hash, rel_path, registered_at = rows[0]
+        self.assertEqual(rel_path, os.path.join("Phone1", "2026-09-20", "a.jpg"))
+        self.assertRegex(registered_at, r"^\d{8}_\d{6}$")
+
+
 if __name__ == "__main__":
     unittest.main()
