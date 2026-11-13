@@ -2,7 +2,7 @@
 .DS_Store
 ._*
 
-# Ignore private local path config rulesfiles
+# Ignore private local path config file
 config.json
 
 # Ignore all generated sha256

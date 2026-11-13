@@ -65,7 +65,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
 
     def test_load_checksum_list_as_exclusion_source(self):
         """Validates extraction of hash fingerprints (Index 0) from tab-separated lists."""
-        dummy_list_path = os.path.join(self.test_dir, "test.excluded.sha256")
+        dummy_list_path = os.path.join(self.test_dir, "exclude.sha256")
         with open(dummy_list_path, "w", encoding="utf-8") as f:
             f.write(f"{self.expected_hash}\trelative/path/to/file.jpg\n")
             f.write("# This comment line should be cleanly skipped\n")
@@ -77,7 +77,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
 
     def test_load_checksum_list_as_local_registry(self):
         """Validates tracking of relative directory paths (Index 1) inside registries."""
-        dummy_list_path = os.path.join(self.test_dir, "test.registered.sha256")
+        dummy_list_path = os.path.join(self.test_dir, "registered.sha256")
         target_relative_path = "abc/bcd/def.txt"
         with open(dummy_list_path, "w", encoding="utf-8") as f:
             f.write(f"{self.expected_hash}\t{target_relative_path}\n")

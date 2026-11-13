@@ -1,6 +1,6 @@
 # myDigitalLife
 
-myDigitalLife is a small, hash-based pipeline for safely curating family photo and video backups across a Dropzone intake folder, a Workspace curation area, and an archive, on shared network storage. It's designed to be simple enough for several non-technical family members to follow the same three steps.
+myDigitalLife is a small, hash-based pipeline for safely curating family photo and video backups across a Dropzone intake folder, a Workspace curation area, and an archive, on shared network storage. It's designed to be simple enough for several non-technical family members to follow the same workflow.
 
 ## 📁 Repository & System Structure
 
@@ -76,7 +76,7 @@ Script | Purpose | When to Run | Command
 `preview_pending_removal.py` | Recomputes, from scratch, which files in `Original/` never made it into `Sorted/`, and copies them into `ToBeDeleted/` for review. Never touches `Original/`, `Sorted/` or Dropzone, so it is safe to run as many times as you like. `ToBeDeleted/` is owned by the script and wiped and regenerated on every run, so never keep your own files in it. | Any time during curation, whenever you want a last look before finalizing. | `python3 scripts/preview_pending_removal.py /path/to/Workspace/Name_Date`
 `finalize_curation.py` | Aborts if Dropzone holds files not yet registered (run `register_and_exclude.py` first). Hashes `Original/` and `Sorted/` fresh, cross-references the Dropzone registry, archives matched Dropzone originals, and updates the shared exclusion ledger. | Once your curation of a `Name_Date` session is completely done. | *Dry-Run Preview:*<br>`python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date`<br>*Commit Changes:*<br>`python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date --commit`
 
-There is deliberately no script to create the `Original`/`Sorted` folder pair - `mkdir -p Workspace/Name_Date/{Original,Sorted}` (or the Finder equivalent) is simple enough to do by hand, and there's no hashing state left to initialize.
+There is deliberately no script to create the `Original`/`Sorted` folder pair - `mkdir -p Workspace/Name_Date/{Original,Sorted}` (or the Finder equivalent) is simple enough to do by hand, since nothing needs to be initialized.
 
 ## 🧭 The Original/Sorted Convention
 
@@ -89,7 +89,7 @@ Inside `Workspace/`, create one folder per curation session, named however you l
 
 **The one rule to remember:** if you remove a file from `Sorted/` because you've changed your mind and do **not** want its Dropzone original archived at all (i.e. you don't want it treated as reviewed), you must also delete it from `Original/`. Otherwise its mere presence in `Original/` is enough to mark it "handled".
 
-**Duplicate filing is not supported yet.** If the exact same file content ends up at two different paths inside `Sorted/` (e.g. filed under both "Family" and "Beach"), `finalize_curation.py` will print both paths and abort before touching anything. Resolve it by keeping only one copy and re-run.
+**Duplicate filing is not supported.** If the exact same file content ends up at two different paths inside `Sorted/` (e.g. filed under both "Family" and "Beach"), `finalize_curation.py` will print both paths and abort before touching anything. Resolve it by keeping only one copy and re-run.
 
 ## 🧪 Running Automated Unit Tests
 
@@ -109,6 +109,6 @@ python3 -m unittest discover -v
 
 * **One Dropzone, one config:** `register_and_exclude.py` always operates on `config.json`'s `dropzone_path` - there's no way to point it at a different folder for a given run. This is intentional: with only one Dropzone, a `Workspace` session can never end up ambiguous about which Dropzone it came from.
 
-* **`registered.sha256` and `exclude.sha256` share one filename convention across both scripts** (`scripts/common.py`).
+* **Shared file names:** both scripts take the names `registered.sha256` and `exclude.sha256` from `scripts/common.py`.
 
 * **Resetting the registry:** If `registered.sha256` ever becomes corrupted or misaligned, delete it. The next `register_and_exclude.py` run will safely rebuild it from whatever is actually in Dropzone (already-excluded content will just be skipped again via `exclude.sha256`).

@@ -17,7 +17,7 @@ from scripts.common import read_checksum_pairs
 
 class TestFinalizeCurationPipeline(unittest.TestCase):
     """
-    Test suite for the rewritten finalize_curation.py: no manifest state,
+    Test suite for finalize_curation.py: it keeps no session state,
     hashes Original/ and Sorted/ fresh every run, and reconciles them
     against the Dropzone registry and the shared exclude.sha256 ledger.
     """
@@ -157,7 +157,7 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
 
     def test_multiple_dropzone_copies_of_same_hash_are_all_moved(self):
         # Two identical files landed in Dropzone under different paths in the
-        # same intake batch (a known register_and_exclude.py edge case).
+        # same intake batch (register_and_exclude.py registers every incoming copy).
         first_copy = os.path.join(self.dropzone_path, "phone", "IMG_005.jpg")
         second_copy = os.path.join(self.dropzone_path, "sdcard", "IMG_005.jpg")
         self._write(first_copy, b"duplicate_intake_photo")
