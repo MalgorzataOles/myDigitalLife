@@ -61,7 +61,7 @@ Step 5: [Preview - optional] ──> preview_pending_removal.py Name_Date
                                   fills ToBeDeleted/ with anything in Original/
                                   that didn't make it into Sorted/, for one last look
                                      │
-Step 6: [Finalize] ─────────────> finalize_curation.py Name_Date [--commit]
+Step 6: [Finalize] ─────────────> finalize_curation.py Name_Date --dry-run | --commit
                                   matched Dropzone originals archived to
                                   Excluded/curation_.../, exclude.sha256 updated
 ```
@@ -74,7 +74,9 @@ Script | Purpose | When to Run | Command
 -------| ------- | ----------- | -------
 `register_and_exclude.py` | Registers fresh Dropzone items; auto-excludes anything already fully processed (per `exclude.sha256`). | Right after dumping new files from phones, SD cards, or external backups. | `python3 scripts/register_and_exclude.py`
 `preview_pending_removal.py` | Recomputes, from scratch, which files in `Original/` never made it into `Sorted/`, and copies them into `ToBeDeleted/` for review. Never touches `Original/`, `Sorted/` or Dropzone, so it is safe to run as many times as you like. `ToBeDeleted/` is owned by the script and wiped and regenerated on every run, so never keep your own files in it. | Any time during curation, whenever you want a last look before finalizing. | `python3 scripts/preview_pending_removal.py /path/to/Workspace/Name_Date`
-`finalize_curation.py` | Aborts if Dropzone holds files not yet registered (run `register_and_exclude.py` first). Hashes `Original/` and `Sorted/` fresh, cross-references the Dropzone registry, archives matched Dropzone originals, and updates the shared exclusion ledger. | Once your curation of a `Name_Date` session is completely done. | *Dry-Run Preview:*<br>`python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date`<br>*Commit Changes:*<br>`python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date --commit`
+`finalize_curation.py` | Aborts if Dropzone holds files not yet registered (run `register_and_exclude.py` first). Hashes `Original/` and `Sorted/` fresh, cross-references the Dropzone registry, archives matched Dropzone originals, and updates the shared exclusion ledger. | Once your curation of a `Name_Date` session is completely done. | *Dry-Run Preview (changes nothing):*<br>`python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date --dry-run`<br>*Commit Changes:*<br>`python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date --commit`
+
+`finalize_curation.py` always needs one of `--dry-run` or `--commit`. Without either it changes nothing and prints both options, so a preview can never be mistaken for a finished run. Run `--dry-run` first, check the list, then run `--commit`.
 
 There is deliberately no script to create the `Original`/`Sorted` folder pair - `mkdir -p Workspace/Name_Date/{Original,Sorted}` (or the Finder equivalent) is simple enough to do by hand, since nothing needs to be initialized.
 

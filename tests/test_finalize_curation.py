@@ -52,9 +52,7 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
             f.write(content)
 
     def _run(self, commit=False):
-        argv = ["finalize_curation.py", self.session_path]
-        if commit:
-            argv.append("--commit")
+        argv = ["finalize_curation.py", self.session_path, "--commit" if commit else "--dry-run"]
         with patch("scripts.finalize_curation.load_configuration", return_value=self.mock_config):
             with patch.object(sys, "argv", argv):
                 main()
@@ -62,7 +60,7 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
     def test_halts_on_missing_original_or_sorted(self):
         shutil.rmtree(self.original_path)
         with patch("scripts.finalize_curation.load_configuration", return_value=self.mock_config):
-            with patch.object(sys, "argv", ["finalize_curation.py", self.session_path]):
+            with patch.object(sys, "argv", ["finalize_curation.py", self.session_path, "--dry-run"]):
                 with self.assertRaises(SystemExit) as cm:
                     main()
                 self.assertEqual(cm.exception.code, 1)
@@ -320,6 +318,35 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
             sorted(row[1:] for row in rows),
             [("Phone1/kept.jpg", "20260921_113015"), ("Phone1/legacy.jpg",)],
         )
+
+    def test_running_without_dry_run_or_commit_changes_nothing_and_shows_both_options(self):
+        import io
+        from contextlib import redirect_stdout
+        dropzone_file = os.path.join(self.dropzone_path, "IMG_009.jpg")
+        self._write(dropzone_file, b"mode_test_photo")
+        from scripts.common import calculate_sha256
+        with open(self.registry_path, "w", encoding="utf-8") as f:
+            f.write(f"{calculate_sha256(dropzone_file)}\tIMG_009.jpg\n")
+        self._write(os.path.join(self.sorted_path, "IMG_009.jpg"), b"mode_test_photo")
+
+        output = io.StringIO()
+        with patch("scripts.finalize_curation.load_configuration", return_value=self.mock_config):
+            with patch.object(sys, "argv", ["finalize_curation.py", self.session_path]):
+                with redirect_stdout(output):
+                    with self.assertRaises(SystemExit) as cm:
+                        main()
+        self.assertEqual(cm.exception.code, 1)
+        self.assertIn("--dry-run", output.getvalue())
+        self.assertIn("--commit", output.getvalue())
+        self.assertTrue(os.path.exists(dropzone_file))
+        self.assertFalse(os.path.exists(self.exclusion_path))
+
+    def test_using_dry_run_and_commit_together_is_rejected(self):
+        with patch("scripts.finalize_curation.load_configuration", return_value=self.mock_config):
+            with patch.object(sys, "argv", ["finalize_curation.py", self.session_path, "--dry-run", "--commit"]):
+                with self.assertRaises(SystemExit) as cm:
+                    main()
+        self.assertEqual(cm.exception.code, 1)
 
 
 if __name__ == "__main__":

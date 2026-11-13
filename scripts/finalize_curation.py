@@ -52,18 +52,22 @@ def find_duplicate_hashes(entries: dict) -> dict:
 
 def main():
     args = sys.argv[1:]
-    is_dry_run = True
-    if "--commit" in args:
-        is_dry_run = False
-        args.remove("--commit")
+    wants_dry_run = "--dry-run" in args
+    wants_commit = "--commit" in args
+    args = [arg for arg in args if arg not in ("--dry-run", "--commit")]
 
-    if not args:
-        print("❌ Execution Error: Missing required session folder path argument.")
+    if not args or wants_dry_run == wants_commit:
+        if args and wants_dry_run and wants_commit:
+            print("❌ Execution Error: Use either --dry-run or --commit, not both.")
+        else:
+            print("❌ Execution Error: Tell me what to do - nothing has been changed.")
         print("")
-        print("Usage:")
-        print("  (Dry-Run) : python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date")
-        print("  (Commit)  : python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date --commit")
+        print("Usage (choose one):")
+        print("  Preview only, changes nothing : python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date --dry-run")
+        print("  Do it for real                : python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date --commit")
         sys.exit(1)
+
+    is_dry_run = wants_dry_run
 
     session_path = args[0]
     original_path = os.path.join(session_path, ORIGINAL_DIRNAME)
@@ -207,7 +211,8 @@ def main():
 
     print("\n" + "=" * 70)
     if is_dry_run:
-        print(" SAFELY COMPLETED DRY-RUN PREVIEW (NO FILES MODIFIED)")
+        print(" DRY-RUN ONLY: NOTHING WAS CHANGED, THE CURATION IS NOT FINALIZED YET")
+        print(" Run again with --commit to apply the changes listed above.")
     else:
         print(" CURATION FINALIZATION COMPLETE")
     print("=" * 70)
