@@ -77,6 +77,8 @@ Step 8: [Finalize] ─────────────> finalize_curation.py
 
 All scripts must be executed from the **root directory** of your repository.
 
+The scripts need Python 3 and run on macOS or Linux only. Windows users can take part by copying files by hand (into Dropzone, `Original/`, `Sorted/` and the home folder), but the commands below must be run on a Mac or Linux computer.
+
 Script | Purpose | When to Run | Command
 -------| ------- | ----------- | -------
 `register_and_exclude.py` | Registers fresh Dropzone items; auto-excludes anything already fully processed (per `exclude.sha256`). | Right after dumping new files from phones, SD cards, or external backups. | `python3 scripts/register_and_exclude.py`
