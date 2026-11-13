@@ -28,8 +28,11 @@ myDigitalLife/
 ```{text}
 /QNAP_Family_Vault/
   ├── Dropzone/    # Intake for raw backups. Treated as immutable - never edited by hand.
-  │                #   registered.sha256  - every file already seen here: hash, path, registration time, who registered it
+  │                # Contains only uploaded content, none of the scripts' own files.
+  ├── State/       # The scripts' own files (state_path in config.json), not for people to edit:
+  │                #   registered.sha256  - every Dropzone file already seen: hash, path, registration time, who registered it
   │                #   exclude.sha256     - hashes already fully processed: hash, path, time, who finalized it
+  │                #   .pipeline.lock     - exists only while a run is in progress
   ├── Logs/        # One log file per script run, shared by everyone (see "Run logs" below)
   └── Excluded/    # Archive. Nothing here is ever read back automatically.
         ├── registration_YYYYMMDD_hhmmss/  # duplicates caught on intake, one folder per run
@@ -147,7 +150,7 @@ python3 -m unittest discover -v
 
 * **Dropzone keeps every incoming copy:** if the same file arrives more than once (another phone, another card, another day), every copy is registered and kept until it has been curated. Only content that was already curated in a past session is moved to `Excluded/` on intake. When a session is finalized, every Dropzone copy of a handled file is archived together.
 
-* **Set your name once:** copy `config.json.template` to `config.json` and replace `"user_name": "CHANGE_ME"` with your own name (for example `"Gosia"`) and set `"log_path"` to the shared folder for logs. `register_and_exclude.py` and `finalize_curation.py` refuse to run until you do, because they record who registered and who finalized every file.
+* **Set your name once:** copy `config.json.template` to `config.json` and replace `"user_name": "CHANGE_ME"` with your own name (for example `"Gosia"`) and set `"log_path"` (the shared folder for logs) and `"state_path"` (the folder for the registry, the ledger and the run lock; it must not be inside Dropzone). `register_and_exclude.py` and `finalize_curation.py` refuse to run until you do, because they record who registered and who finalized every file.
 
 * **Run logs:** every run of `register_and_exclude.py`, `preview_pending_removal.py` and `finalize_curation.py` (dry runs too) writes a log file to the shared `log_path` folder from `config.json`, named like `20261113_134237_finalize_curation_Gosia.log`. It contains everything that was printed in the terminal, a header (who, which computer, which arguments) and how the run ended, including the full error if it crashed. Look there when something unexpected happened, also on someone else's run. The scripts refuse to run if the log folder cannot be written, and logs are never deleted automatically. `log_path` must not be inside Dropzone. Logs contain file names, so never commit them.
 
@@ -163,6 +166,8 @@ python3 -m unittest discover -v
 
 * **Files that are skipped:** macOS and Windows metadata (`._*`, `.DS_Store`, `Thumbs.db`, `desktop.ini`). Files whose names contain a tab or line break are not registered; the summary lists them so you can rename them.
 
-* **One run at a time:** while `register_and_exclude.py` or `finalize_curation.py` runs, it holds a lock (a `.pipeline.lock` folder in Dropzone), so a second run, even from another computer, stops and tells you who is running what. The lock is removed automatically when the run ends, fails or is interrupted. If a computer crashes or loses power mid-run, a leftover lock from that same computer is removed on the next run. A leftover lock from another computer is not removed automatically: the message names the owner, and if you are sure nobody is running the scripts, delete the `.pipeline.lock` folder it points to.
+* **One run at a time:** while `register_and_exclude.py` or `finalize_curation.py` runs, it holds a lock (a `.pipeline.lock` folder in the `State/` folder), so a second run, even from another computer, stops and tells you who is running what. The lock is removed automatically when the run ends, fails or is interrupted. If a computer crashes or loses power mid-run, a leftover lock from that same computer is removed on the next run. A leftover lock from another computer is not removed automatically: the message names the owner, and if you are sure nobody is running the scripts, delete the `.pipeline.lock` folder it points to.
 
-* **Resetting the registry:** If `registered.sha256` ever becomes corrupted or misaligned, delete it. The next `register_and_exclude.py` run will safely rebuild it from whatever is actually in Dropzone (already-excluded content will just be skipped again via `exclude.sha256`).
+* **`registered.sha256` and `exclude.sha256` moved to `State/`:** older versions kept them inside Dropzone. If a script finds them there it stops and tells you to move them to the `State/` folder by hand.
+
+* **Resetting the registry:** If `registered.sha256` in `State/` ever becomes corrupted or misaligned, delete it. The next `register_and_exclude.py` run will safely rebuild it from whatever is actually in Dropzone (already-excluded content will just be skipped again via `exclude.sha256`).

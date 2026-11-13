@@ -25,6 +25,8 @@ from scripts.common import (
     check_folder_layout,
     get_user_name,
     get_log_path,
+    get_state_path,
+    legacy_state_files_in_dropzone,
     run_log,
     normalize_path,
     pipeline_lock,
@@ -79,12 +81,13 @@ def main():
     config = load_configuration()
     user_name = get_user_name(config)
     log_path = get_log_path(config)
+    state_path = get_state_path(config)
 
     with run_log(log_path, "finalize_curation.py", user_name, sys.argv[1:]):
-        run(wants_dry_run, paths[0], config, user_name)
+        run(wants_dry_run, paths[0], config, user_name, state_path)
 
 
-def run(is_dry_run, session_path, config, user_name):
+def run(is_dry_run, session_path, config, user_name, state_path):
     original_path = os.path.join(session_path, ORIGINAL_DIRNAME)
     sorted_path = os.path.join(session_path, SORTED_DIRNAME)
 
@@ -105,16 +108,32 @@ def run(is_dry_run, session_path, config, user_name):
         print("❌ Execution Halting: 'excluded_path' configuration is missing from config.json.")
         sys.exit(1)
 
-    layout_problem = check_folder_layout(dropzone_path, excluded_root_dir, session_path, config.get("log_path"))
+    layout_problem = check_folder_layout(dropzone_path, excluded_root_dir, session_path,
+                                         config.get("log_path"), state_path)
     if layout_problem:
         print(f"❌ Execution Halting: {layout_problem}")
         sys.exit(1)
 
-    with pipeline_lock(dropzone_path, "finalize_curation.py"):
-        process(is_dry_run, session_path, original_path, sorted_path, dropzone_path, excluded_root_dir, user_name)
+    leftovers = legacy_state_files_in_dropzone(dropzone_path)
+    if leftovers:
+        print(f"❌ Execution Halting: {' and '.join(leftovers)} found inside the Dropzone.")
+        print(f"   These files now live in the state folder ({state_path}).")
+        print("   Move them there by hand, then run this again. Nothing has been changed.")
+        sys.exit(1)
+
+    try:
+        os.makedirs(state_path, exist_ok=True)
+    except OSError as e:
+        print(f"❌ Execution Halting: Cannot use 'state_path' ({state_path}): {e}")
+        sys.exit(1)
+
+    with pipeline_lock(state_path, "finalize_curation.py"):
+        process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
+                excluded_root_dir, user_name, state_path)
 
 
-def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path, excluded_root_dir, user_name):
+def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
+            excluded_root_dir, user_name, state_path):
     print("\n" + "~" * 60)
     if is_dry_run:
         print(" 👀 RUNNING IN DRY-RUN MODE: Previewing proposed steps...")
@@ -128,7 +147,7 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
 
     # Step 0a: finalizing only archives files listed in the registry, so a
     # Dropzone file that was never registered would silently be left behind.
-    registry_path = os.path.join(dropzone_path, REGISTRY_FILENAME)
+    registry_path = os.path.join(state_path, REGISTRY_FILENAME)
     unregistered = find_unregistered_files(
         dropzone_path, load_checksum_list(registry_path, is_local_registry=True)
     )
@@ -181,7 +200,7 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
 
     handled_hashes = set(sorted_entries.values()) | set(original_entries.values())
 
-    exclusion_list_path = os.path.join(dropzone_path, EXCLUDE_FILENAME)
+    exclusion_list_path = os.path.join(state_path, EXCLUDE_FILENAME)
 
     # hash -> every Dropzone-relative path registered under it (usually one,
     # but two identical files dumped together in the same run can share a

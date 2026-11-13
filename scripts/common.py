@@ -23,8 +23,8 @@ CONFIG_FILE_PATH = os.path.join(REPO_ROOT, "config.json")
 REGISTRY_FILENAME = "registered.sha256"
 EXCLUDE_FILENAME = "exclude.sha256"
 
-# Folder created in Dropzone while register_and_exclude.py or finalize_curation.py
-# runs, so two people can't change the registry at the same time.
+# Folder created in the state folder while register_and_exclude.py or
+# finalize_curation.py runs, so two people can't change the registry at the same time.
 LOCK_DIRNAME = ".pipeline.lock"
 LOCK_OWNER_FILENAME = "owner.json"
 
@@ -33,6 +33,9 @@ PLACEHOLDER_USER_NAME = "CHANGE_ME"
 
 # Value of "log_path" in config.json.template; it must be replaced by a real folder.
 PLACEHOLDER_LOG_PATH = "/path/to/your/storage/Logs"
+
+# Value of "state_path" in config.json.template; it must be replaced by a real folder.
+PLACEHOLDER_STATE_PATH = "/path/to/your/storage/State"
 
 # One timestamp format for batch folder names and registry rows (YYYYMMDD_hhmmss).
 TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
@@ -76,6 +79,24 @@ def get_user_name(config: dict) -> str:
         print("❌ Execution Halting: 'user_name' in config.json must not contain tabs or line breaks.")
         sys.exit(1)
     return user_name
+
+
+def get_state_path(config: dict) -> str:
+    """Returns the folder holding the registry, the ledger and the lock, or stops if it was never filled in."""
+    state_path = config.get("state_path")
+    state_path = state_path.strip() if isinstance(state_path, str) else ""
+    if not state_path or state_path == PLACEHOLDER_STATE_PATH:
+        print("❌ Execution Halting: 'state_path' in config.json is missing or still the placeholder.")
+        print(f"   Open {CONFIG_FILE_PATH} and set \"state_path\" to the folder for registered.sha256,")
+        print("   exclude.sha256 and the run lock (it must not be inside the Dropzone).")
+        sys.exit(1)
+    return state_path
+
+
+def legacy_state_files_in_dropzone(dropzone_path: str) -> list:
+    """Names of registry/ledger files still lying in the Dropzone from before they moved to state_path."""
+    return [name for name in (REGISTRY_FILENAME, EXCLUDE_FILENAME, REGISTRY_FILENAME + ".tmp")
+            if os.path.exists(os.path.join(dropzone_path, name))]
 
 
 def get_log_path(config: dict) -> str:
@@ -255,7 +276,8 @@ def has_unsupported_name(relative_path: str) -> bool:
     return any(char in relative_path for char in ("\t", "\n", "\r"))
 
 
-def check_folder_layout(dropzone_path: str, excluded_path: str, session_path: str = None, log_path: str = None):
+def check_folder_layout(dropzone_path: str, excluded_path: str, session_path: str = None,
+                        log_path: str = None, state_path: str = None):
     """
     Returns an error message if the folders overlap in a way that would make the
     scripts treat their own output as new files, otherwise None.
@@ -272,6 +294,8 @@ def check_folder_layout(dropzone_path: str, excluded_path: str, session_path: st
         return "The session folder must not be inside the Dropzone."
     if log_path and is_inside(log_path, dropzone_path):
         return "'log_path' must not be inside the Dropzone."
+    if state_path and is_inside(state_path, dropzone_path):
+        return "'state_path' must not be inside the Dropzone."
     return None
 
 
@@ -316,11 +340,8 @@ def append_checksum_lines(file_path: str, lines: list) -> None:
 
 
 def is_ignored_dropzone_file(filename: str) -> bool:
-    """Files in Dropzone that are never registered: OS metadata and our own ledgers."""
-    return (is_ignored_file(filename) or
-            filename == REGISTRY_FILENAME or
-            filename == REGISTRY_FILENAME + ".tmp" or
-            filename == EXCLUDE_FILENAME)
+    """Files in Dropzone that are never registered: OS metadata."""
+    return is_ignored_file(filename)
 
 
 def _process_is_running(pid: int) -> bool:
@@ -351,16 +372,17 @@ def _lock_is_stale(owner: dict) -> bool:
 
 
 @contextmanager
-def pipeline_lock(dropzone_path: str, script_name: str):
+def pipeline_lock(state_path: str, script_name: str):
     """
-    Holds an exclusive lock on the Dropzone for the duration of the with-block.
+    Holds an exclusive lock on the state folder (and with it on the registry,
+    the ledger and the Dropzone) for the duration of the with-block.
     Creating a folder is atomic, even on a network share, so only one run can
     succeed. The lock is released on normal exit, errors, Ctrl-C and when the
     terminal is closed. After a hard crash a stale lock may remain: one left by
     a dead process on this computer is removed automatically, any other is
     reported with who made it and how to remove it.
     """
-    lock_path = os.path.join(dropzone_path, LOCK_DIRNAME)
+    lock_path = os.path.join(state_path, LOCK_DIRNAME)
 
     for attempt in (1, 2):
         try:
@@ -411,7 +433,6 @@ def find_unregistered_files(dropzone_path: str, registered_paths: set) -> list:
     unregistered = []
     known_paths = {normalize_path(path) for path in registered_paths}
     for root, dirs, files in os.walk(dropzone_path):
-        dirs[:] = [d for d in dirs if d != LOCK_DIRNAME]
         for file in files:
             if is_ignored_dropzone_file(file):
                 continue

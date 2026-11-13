@@ -32,6 +32,8 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         
         os.makedirs(self.dropzone_path, exist_ok=True)
         os.makedirs(self.excluded_path, exist_ok=True)
+        self.state_path = os.path.join(self.test_dir, "State")
+        os.makedirs(self.state_path, exist_ok=True)
 
         # Mock configuration dictionary matching your production config structure
         self.mock_config = {
@@ -39,6 +41,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
             "excluded_path": self.excluded_path,
             "user_name": "Tester",
             "log_path": os.path.join(self.test_dir, "Logs"),
+            "state_path": self.state_path,
         }
 
         # Create a test file with known content to compute explicit expected hash value
@@ -98,7 +101,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         mock_load_config.return_value = self.mock_config
 
         # 1. Establish an exclusion fingerprint match constraint via the shared exclusion ledger
-        exclusion_file_path = os.path.join(self.dropzone_path, "exclude.sha256")
+        exclusion_file_path = os.path.join(self.state_path, "exclude.sha256")
         with open(exclusion_file_path, "w", encoding="utf-8") as f:
             f.write(f"{self.expected_hash}\tany_old_path/photo.jpg\n")
 
@@ -126,7 +129,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         self.assertTrue(os.path.exists(unique_file_path))
 
         # Check B: The unique file relative path must be committed to the Dropzone registry
-        registry_file_path = os.path.join(self.dropzone_path, "registered.sha256")
+        registry_file_path = os.path.join(self.state_path, "registered.sha256")
         self.assertTrue(os.path.exists(registry_file_path))
         registry_data = load_checksum_list(registry_file_path, is_local_registry=True)
         self.assertIn("unique_folder/unique.txt", registry_data)
@@ -176,7 +179,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         self.assertIn(os.path.join("SDCard", "2026-09-21", "locked.jpg"), summary)
 
         registry_data = load_checksum_list(
-            os.path.join(self.dropzone_path, "registered.sha256"), is_local_registry=True
+            os.path.join(self.state_path, "registered.sha256"), is_local_registry=True
         )
         self.assertEqual(len(registry_data), 2)
 
@@ -186,7 +189,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         from contextlib import redirect_stdout
         mock_load_config.return_value = self.mock_config
 
-        with open(os.path.join(self.dropzone_path, "exclude.sha256"), "w", encoding="utf-8") as f:
+        with open(os.path.join(self.state_path, "exclude.sha256"), "w", encoding="utf-8") as f:
             f.write(f"{self.expected_hash}\told/photo.jpg\n")
         stuck_dir = os.path.join(self.dropzone_path, "Phone1", "2026-09-20")
         os.makedirs(stuck_dir, exist_ok=True)
@@ -217,7 +220,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
 
         main()
 
-        rows = read_checksum_rows(os.path.join(self.dropzone_path, "registered.sha256"))
+        rows = read_checksum_rows(os.path.join(self.state_path, "registered.sha256"))
         self.assertEqual(len(rows), 1)
         file_hash, rel_path, registered_at, user_name = rows[0]
         self.assertEqual(user_name, "Tester")

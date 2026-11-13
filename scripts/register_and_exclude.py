@@ -20,6 +20,8 @@ from scripts.common import (
     check_folder_layout,
     get_user_name,
     get_log_path,
+    get_state_path,
+    legacy_state_files_in_dropzone,
     run_log,
     pipeline_lock,
     LOCK_DIRNAME,
@@ -37,12 +39,13 @@ def main():
     config = load_configuration()
     user_name = get_user_name(config)
     log_path = get_log_path(config)
+    state_path = get_state_path(config)
 
     with run_log(log_path, "register_and_exclude.py", user_name, sys.argv[1:]):
-        run(config, user_name)
+        run(config, user_name, state_path)
 
 
-def run(config, user_name):
+def run(config, user_name, state_path):
     dropzone_path = config.get("dropzone_path")
     excluded_root_dir = config.get("excluded_path")
 
@@ -54,18 +57,32 @@ def run(config, user_name):
         print("❌ Execution Halting: 'excluded_path' configuration is completely missing from config.json.")
         sys.exit(1)
 
-    layout_problem = check_folder_layout(dropzone_path, excluded_root_dir, log_path=config.get("log_path"))
+    layout_problem = check_folder_layout(dropzone_path, excluded_root_dir,
+                                         log_path=config.get("log_path"), state_path=state_path)
     if layout_problem:
         print(f"❌ Execution Halting: {layout_problem}")
         sys.exit(1)
 
-    with pipeline_lock(dropzone_path, "register_and_exclude.py"):
-        process(dropzone_path, excluded_root_dir, user_name)
+    leftovers = legacy_state_files_in_dropzone(dropzone_path)
+    if leftovers:
+        print(f"❌ Execution Halting: {' and '.join(leftovers)} found inside the Dropzone.")
+        print(f"   These files now live in the state folder ({state_path}).")
+        print("   Move them there by hand, then run this again. Nothing has been changed.")
+        sys.exit(1)
+
+    try:
+        os.makedirs(state_path, exist_ok=True)
+    except OSError as e:
+        print(f"❌ Execution Halting: Cannot use 'state_path' ({state_path}): {e}")
+        sys.exit(1)
+
+    with pipeline_lock(state_path, "register_and_exclude.py"):
+        process(dropzone_path, excluded_root_dir, user_name, state_path)
 
 
-def process(dropzone_path, excluded_root_dir, user_name):
-    registry_path = os.path.join(dropzone_path, REGISTRY_FILENAME)
-    exclusion_list_path = os.path.join(dropzone_path, EXCLUDE_FILENAME)
+def process(dropzone_path, excluded_root_dir, user_name, state_path):
+    registry_path = os.path.join(state_path, REGISTRY_FILENAME)
+    exclusion_list_path = os.path.join(state_path, EXCLUDE_FILENAME)
 
     # Pre-load datasets into memory securely before header generation
     exclusion_set = load_checksum_list(exclusion_list_path, is_local_registry=False)
@@ -84,9 +101,9 @@ def process(dropzone_path, excluded_root_dir, user_name):
     print(" 📸 STARTING RUN: Checking for new files...")
     print("~" * 60)
     print(f" Scanning folder   : {dropzone_path}")
-    print(f" Registry file     : {REGISTRY_FILENAME}")
+    print(f" Registry file     : {registry_path}")
     if os.path.exists(exclusion_list_path) and len(exclusion_set) > 0:
-        print(f" Exclusion file    : {EXCLUDE_FILENAME} ({len(exclusion_set)} items loaded)")
+        print(f" Exclusion file    : {exclusion_list_path} ({len(exclusion_set)} items loaded)")
     print("~" * 60 + "\n")
 
     new_entries = []

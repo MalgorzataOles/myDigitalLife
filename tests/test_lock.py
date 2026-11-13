@@ -18,7 +18,7 @@ if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
 from scripts import register_and_exclude, finalize_curation
-from scripts.common import pipeline_lock, find_unregistered_files, LOCK_DIRNAME, LOCK_OWNER_FILENAME
+from scripts.common import pipeline_lock, LOCK_DIRNAME, LOCK_OWNER_FILENAME
 
 
 def dead_process_id() -> int:
@@ -107,10 +107,6 @@ class TestPipelineLock(unittest.TestCase):
                     self.fail("the lock must not be granted")
         self.assertTrue(os.path.isdir(self.lock_path))
 
-    def test_lock_folder_is_not_mistaken_for_unregistered_files(self):
-        with pipeline_lock(self.dropzone, "test.py"):
-            self.assertEqual(find_unregistered_files(self.dropzone, set()), [])
-
 
 class TestScriptsRespectTheLock(unittest.TestCase):
     def setUp(self):
@@ -120,9 +116,11 @@ class TestScriptsRespectTheLock(unittest.TestCase):
         self.session = os.path.join(self.test_dir, "Workspace", "Gosia_20260925")
         for folder in (self.dropzone, os.path.join(self.session, "Original"), os.path.join(self.session, "Sorted")):
             os.makedirs(folder)
+        self.state = os.path.join(self.test_dir, "State")
+        os.makedirs(self.state)
         self.config = {"dropzone_path": self.dropzone, "excluded_path": self.excluded, "user_name": "Tester",
-                       "log_path": os.path.join(self.test_dir, "Logs")}
-        os.mkdir(os.path.join(self.dropzone, LOCK_DIRNAME))
+                       "log_path": os.path.join(self.test_dir, "Logs"), "state_path": self.state}
+        os.mkdir(os.path.join(self.state, LOCK_DIRNAME))
         with open(os.path.join(self.dropzone, "a.jpg"), "wb") as f:
             f.write(b"a")
 
@@ -139,11 +137,11 @@ class TestScriptsRespectTheLock(unittest.TestCase):
 
     def test_register_does_nothing_while_another_run_holds_the_lock(self):
         self.run_blocked(register_and_exclude)
-        self.assertFalse(os.path.exists(os.path.join(self.dropzone, "registered.sha256")))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "registered.sha256")))
 
     def test_finalize_does_nothing_while_another_run_holds_the_lock(self):
         self.run_blocked(finalize_curation, self.session, "--commit")
-        self.assertFalse(os.path.exists(os.path.join(self.dropzone, "exclude.sha256")))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "exclude.sha256")))
 
 
 if __name__ == "__main__":

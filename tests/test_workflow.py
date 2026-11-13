@@ -32,12 +32,15 @@ class WorkflowTestCase(unittest.TestCase):
         self.excluded = os.path.join(self.test_dir, "Excluded")
         self.session = os.path.join(self.test_dir, "Workspace", "Gosia_20260925")
         os.makedirs(self.dropzone)
+        self.state = os.path.join(self.test_dir, "State")
+        os.makedirs(self.state)
         os.makedirs(os.path.join(self.session, "Original"))
         os.makedirs(os.path.join(self.session, "Sorted"))
         self.config = {"dropzone_path": self.dropzone, "excluded_path": self.excluded, "user_name": "Tester",
-                       "log_path": os.path.join(self.test_dir, "Logs")}
-        self.registry = os.path.join(self.dropzone, "registered.sha256")
-        self.ledger = os.path.join(self.dropzone, "exclude.sha256")
+                       "log_path": os.path.join(self.test_dir, "Logs"),
+                       "state_path": self.state}
+        self.registry = os.path.join(self.state, "registered.sha256")
+        self.ledger = os.path.join(self.state, "exclude.sha256")
 
     def tearDown(self):
         shutil.rmtree(self.test_dir)
@@ -311,7 +314,7 @@ class TestRunLog(WorkflowTestCase):
         self.assertIn("# result    : CRASHED", log)
 
     def test_a_run_stopped_by_the_lock_is_logged(self):
-        os.mkdir(os.path.join(self.dropzone, ".pipeline.lock"))
+        os.mkdir(os.path.join(self.state, ".pipeline.lock"))
         with self.assertRaises(SystemExit):
             self.register()
         _, log = self.only_log()
@@ -426,6 +429,69 @@ class TestEmptyFolderCleanup(WorkflowTestCase):
 
     def test_files_directly_in_the_source_folder_never_remove_it(self):
         self.assertEqual(folders_that_become_empty(self.dropzone, ["Phone1/a.jpg", "b.jpg"]), [])
+
+
+class TestStateFolder(WorkflowTestCase):
+    def setUp(self):
+        super().setUp()
+        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+
+    def test_registry_ledger_and_lock_live_in_the_state_folder_not_in_dropzone(self):
+        self.register()
+        self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
+        self.finalize("--commit")
+        self.assertEqual(sorted(os.listdir(self.state)), ["exclude.sha256", "registered.sha256"])
+        for name in os.listdir(self.dropzone):
+            self.assertNotIn(".sha256", name)
+            self.assertNotEqual(name, ".pipeline.lock")
+
+    def test_lock_is_taken_in_the_state_folder_while_running(self):
+        seen = {}
+        original_process = register_and_exclude.process
+
+        def spy(*args, **kwargs):
+            seen["lock_in_state"] = os.path.isdir(os.path.join(self.state, ".pipeline.lock"))
+            seen["lock_in_dropzone"] = os.path.exists(os.path.join(self.dropzone, ".pipeline.lock"))
+            return original_process(*args, **kwargs)
+
+        with patch.object(register_and_exclude, "process", side_effect=spy):
+            self.register()
+        self.assertEqual(seen, {"lock_in_state": True, "lock_in_dropzone": False})
+        self.assertFalse(os.path.exists(os.path.join(self.state, ".pipeline.lock")))
+
+    def test_state_folder_is_created_when_missing(self):
+        shutil.rmtree(self.state)
+        self.register()
+        self.assertTrue(os.path.exists(self.registry))
+
+    def test_missing_or_placeholder_state_path_stops_both_scripts(self):
+        for value in (None, "", "/path/to/your/storage/State"):
+            with self.subTest(state_path=value):
+                if value is None:
+                    del self.config["state_path"]
+                else:
+                    self.config["state_path"] = value
+                for run in (self.register, lambda: self.finalize("--dry-run")):
+                    with self.assertRaises(SystemExit) as cm:
+                        run()
+                    self.assertEqual(cm.exception.code, 1)
+                    self.assertIn("state_path", self.last_output)
+
+    def test_state_folder_inside_dropzone_is_refused(self):
+        self.config["state_path"] = os.path.join(self.dropzone, "State")
+        with self.assertRaises(SystemExit):
+            self.register()
+        self.assertFalse(os.path.exists(os.path.join(self.dropzone, "State")))
+
+    def test_old_registry_or_ledger_still_in_dropzone_stops_the_run_with_instructions(self):
+        self.write(os.path.join(self.dropzone, "registered.sha256"), b"abc\tx\n")
+        for run in (self.register, lambda: self.finalize("--dry-run")):
+            with self.assertRaises(SystemExit) as cm:
+                run()
+            self.assertEqual(cm.exception.code, 1)
+            self.assertIn("registered.sha256 found inside the Dropzone", self.last_output)
+            self.assertIn("Move them there", self.last_output)
+        self.assertFalse(os.path.exists(self.registry))
 
 
 if __name__ == "__main__":

@@ -32,6 +32,8 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
 
         os.makedirs(self.dropzone_path, exist_ok=True)
         os.makedirs(self.excluded_path, exist_ok=True)
+        self.state_path = os.path.join(self.test_dir, "State")
+        os.makedirs(self.state_path, exist_ok=True)
         os.makedirs(self.original_path, exist_ok=True)
         os.makedirs(self.sorted_path, exist_ok=True)
 
@@ -40,10 +42,11 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
             "excluded_path": self.excluded_path,
             "user_name": "Tester",
             "log_path": os.path.join(self.test_dir, "Logs"),
+            "state_path": self.state_path,
         }
 
-        self.registry_path = os.path.join(self.dropzone_path, "registered.sha256")
-        self.exclusion_path = os.path.join(self.dropzone_path, "exclude.sha256")
+        self.registry_path = os.path.join(self.state_path, "registered.sha256")
+        self.exclusion_path = os.path.join(self.state_path, "exclude.sha256")
 
     def tearDown(self):
         shutil.rmtree(self.test_dir)
