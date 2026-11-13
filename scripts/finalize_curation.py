@@ -147,7 +147,7 @@ def main():
 
     existing_exclusion_hashes = {file_hash for file_hash, _ in read_checksum_pairs(exclusion_list_path)}
 
-    timestamp = datetime.now().strftime("%y%m%d_%H%M")
+    timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
     current_batch_excluded_dir = os.path.join(excluded_root_dir, f"curation_{timestamp}")
 
     files_to_move = []

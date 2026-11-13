@@ -31,8 +31,8 @@ myDigitalLife/
   │                #   registered.sha256  - every file already seen here
   │                #   exclude.sha256     - hashes already fully processed in a past session
   └── Excluded/    # Archive. Nothing here is ever read back automatically.
-        ├── registration_YYMMDD_hhmm/   # duplicates caught on intake, one folder per run
-        └── curation_YYMMDD_hhmm/      # originals archived once a curation session is done
+        ├── registration_YYMMDD_hhmmss/  # duplicates caught on intake, one folder per run
+        └── curation_YYMMDD_hhmmss/     # originals archived once a curation session is done
 ```
 
 ### Expected state of Dropzone

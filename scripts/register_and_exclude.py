@@ -41,7 +41,7 @@ def main():
     registered_paths = load_checksum_list(registry_path, is_local_registry=True)
 
     # Dynamic creation of the timestamped isolation folder inside Excluded/
-    timestamp = datetime.now().strftime("%y%m%d_%H%M")
+    timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
     current_batch_excluded_dir = os.path.join(excluded_root_dir, f"registration_{timestamp}")
 
     # Clean, literal startup dashboard
