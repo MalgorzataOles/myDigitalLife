@@ -80,7 +80,11 @@ There is deliberately no script to create the `Original`/`Sorted` folder pair - 
 
 ## 🧭 The Original/Sorted Convention
 
-Inside `Workspace/`, create one folder per curation session, named however you like (e.g. `YourName_2026-09-25`), containing exactly two subfolders:
+Inside `Workspace/`, create one folder per curation session, containing exactly two subfolders.
+
+Name the session folder `<YourName>_<YYYY-MM-DD>`, for example `Gosia_2026-09-25`: the person doing the curation and the date the session started. The scripts don't depend on the name, it only helps family members see whose session a folder is.
+
+The two subfolders are:
 
 - **`Original/`** - an untouched copy of whatever you pulled from Dropzone for this session. Any internal structure is fine; hashing doesn't care about folder layout.
 - **`Sorted/`** - your actual working copy. Reorganize, rename, move into categories, delete - whatever you want, as much as you want, as many times as you want.
