@@ -14,6 +14,7 @@ from scripts.common import (
     load_configuration,
     load_checksum_list,
     is_ignored_dropzone_file,
+    describe_folder_counts,
     REGISTRY_FILENAME,
     EXCLUDE_FILENAME,
 )
@@ -56,6 +57,9 @@ def main():
 
     new_entries = []
     excluded_files_log = []
+    unreadable_files = []
+    moved_files = []
+    failed_moves = []
 
     print("🔎 Scanning files ...")
 
@@ -75,6 +79,7 @@ def main():
             # Case B: Brand new file. Calculate signature
             file_hash = calculate_sha256(full_path)
             if not file_hash:
+                unreadable_files.append(relative_path)
                 continue
 
             # Case C: If found in the exclusion ledger, stage for structured migration
@@ -105,8 +110,10 @@ def main():
             print(f"   [ISOLATING] Excluded -> {rel_path}")
             try:
                 shutil.move(source_full_path, destination_path)
+                moved_files.append(rel_path)
             except OSError as e:
                 print(f"   ❌ Error shifting file {rel_path} to backup space: {e}")
+                failed_moves.append(rel_path)
 
     # Save and commit new unique additions to the Dropzone registry
     if new_entries:
@@ -122,8 +129,22 @@ def main():
     print(" PROCESSING RUN COMPLETE")
     print("=" * 70)
     print(f" Files registered     : {len(new_entries)}")
-    print(f" Files excluded       : {len(excluded_files_log)}")
-    if excluded_files_log:
+    for line in describe_folder_counts([rel_path for _, rel_path in new_entries]):
+        print(f"     - {line}")
+    print(f" Files excluded       : {len(moved_files)}")
+    for line in describe_folder_counts(moved_files):
+        print(f"     - {line}")
+    if failed_moves:
+        print(f" ⚠️  Files NOT moved to Excluded/ (move failed): {len(failed_moves)}")
+        for rel_path in sorted(failed_moves):
+            print(f"     - {rel_path}")
+        print("     They are still in Dropzone and were not registered. Run this script again.")
+    if unreadable_files:
+        print(f" ⚠️  Files NOT registered (could not be read): {len(unreadable_files)}")
+        for rel_path in sorted(unreadable_files):
+            print(f"     - {rel_path}")
+        print("     They were skipped. Fix the problem and run this script again.")
+    if moved_files:
         print(f" 📂 Moved to folder : {current_batch_excluded_dir}")
         print("\n" + "─" * 70)
         print("  ⚠️  ACTION REQUIRED: Excluded Files Pending Review")

@@ -90,6 +90,7 @@ def is_ignored_dropzone_file(filename: str) -> bool:
     """Files in Dropzone that are never registered: OS metadata and our own ledgers."""
     return (is_ignored_file(filename) or
             filename == REGISTRY_FILENAME or
+            filename == REGISTRY_FILENAME + ".tmp" or
             filename == EXCLUDE_FILENAME)
 
 
@@ -119,6 +120,14 @@ def group_by_source_folder(relative_paths: list, depth: int = 2) -> dict:
         label = os.sep.join(folder_parts) + os.sep if folder_parts else rel_path
         groups[label] = groups.get(label, 0) + 1
     return dict(sorted(groups.items()))
+
+
+def describe_folder_counts(relative_paths: list) -> list:
+    """Returns display lines like 'Phone1/2026-09-20/  (432 files)', one per source folder."""
+    return [
+        f"{label}  ({count} file{'s' if count != 1 else ''})"
+        for label, count in group_by_source_folder(relative_paths).items()
+    ]
 
 
 def hash_files_in(folder_path: str) -> dict:

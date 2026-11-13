@@ -244,5 +244,60 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         })
 
 
+    def _setup_two_handled_files(self):
+        from scripts.common import calculate_sha256
+        files = {"one.jpg": b"first_photo", "two.jpg": b"second_photo"}
+        with open(self.registry_path, "w", encoding="utf-8") as f:
+            for name, content in files.items():
+                dropzone_file = os.path.join(self.dropzone_path, "Phone1", "2026-09-20", name)
+                self._write(dropzone_file, content)
+                self._write(os.path.join(self.sorted_path, name), content)
+                f.write(f"{calculate_sha256(dropzone_file)}\tPhone1/2026-09-20/{name}\n")
+
+    def _assert_fully_finalized(self):
+        for name in ("one.jpg", "two.jpg"):
+            self.assertFalse(os.path.exists(os.path.join(self.dropzone_path, "Phone1", "2026-09-20", name)))
+        self.assertEqual(len(read_checksum_pairs(self.registry_path)), 0)
+        self.assertEqual(len(read_checksum_pairs(self.exclusion_path)), 2)
+        archived = [
+            name
+            for batch in os.listdir(self.excluded_path)
+            for _, _, names in os.walk(os.path.join(self.excluded_path, batch))
+            for name in names
+        ]
+        self.assertEqual(sorted(archived), ["one.jpg", "two.jpg"])
+
+    def test_rerun_after_interruption_between_moves_completes_cleanly(self):
+        self._setup_two_handled_files()
+        real_move = shutil.move
+        calls = []
+
+        def move_then_interrupt(src, dst):
+            calls.append(src)
+            if len(calls) == 2:
+                raise KeyboardInterrupt()
+            return real_move(src, dst)
+
+        with patch("scripts.finalize_curation.shutil.move", side_effect=move_then_interrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                self._run(commit=True)
+
+        self._run(commit=True)
+        self._assert_fully_finalized()
+
+    def test_rerun_after_interruption_before_registry_rewrite_completes_cleanly(self):
+        self._setup_two_handled_files()
+
+        with patch("scripts.finalize_curation.os.replace", side_effect=KeyboardInterrupt()):
+            with self.assertRaises(KeyboardInterrupt):
+                self._run(commit=True)
+
+        # Files are already archived and the ledger written, but the registry is untouched.
+        self.assertEqual(len(read_checksum_pairs(self.registry_path)), 2)
+
+        self._run(commit=True)
+        self._assert_fully_finalized()
+
+
 if __name__ == "__main__":
     unittest.main()

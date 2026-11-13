@@ -15,7 +15,7 @@ from scripts.common import (
     read_checksum_pairs,
     load_checksum_list,
     find_unregistered_files,
-    group_by_source_folder,
+    describe_folder_counts,
     hash_files_in,
     REGISTRY_FILENAME,
     EXCLUDE_FILENAME,
@@ -26,12 +26,16 @@ SORTED_DIRNAME = "Sorted"
 
 
 def write_checksum_pairs(file_path: str, records: list, header_text: str) -> None:
-    """Writes/overwrites a checksum file cleanly using tab separation formatting."""
+    """Replaces a checksum file in one step, so an interruption never leaves it half-written."""
+    temp_path = f"{file_path}.tmp"
     try:
-        with open(file_path, "w", encoding="utf-8") as f:
+        with open(temp_path, "w", encoding="utf-8") as f:
             f.write(f"# {header_text}\n")
             for file_hash, rel_path in records:
                 f.write(f"{file_hash}\t{rel_path}\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, file_path)
     except (IOError, OSError) as e:
         print(f"❌ Critical Failure: Could not write updates to {file_path}: {e}")
 
@@ -100,8 +104,8 @@ def main():
     )
     if unregistered:
         print("❌ Execution Halting: These Dropzone folders contain files that are not registered yet:")
-        for label, count in group_by_source_folder(unregistered).items():
-            print(f"     - {label}  ({count} file{'s' if count != 1 else ''})")
+        for line in describe_folder_counts(unregistered):
+            print(f"     - {line}")
         print("\n   Run register_and_exclude.py first, then run this again.")
         print("   Nothing has been changed.\n")
         sys.exit(1)
@@ -165,6 +169,18 @@ def main():
             for rel_path in dropzone_paths:
                 remaining_registry_records.append((file_hash, rel_path))
 
+    # Order matters for safe re-runs after an interruption: record the ledger
+    # first, move files second, and rewrite the registry last. Whatever stage
+    # was interrupted, running this again completes the remaining stages.
+    if not is_dry_run and new_exclusion_records:
+        try:
+            with open(exclusion_list_path, "a", encoding="utf-8") as f:
+                for file_hash, rel_path in new_exclusion_records:
+                    f.write(f"{file_hash}\t{rel_path}\n")
+        except (IOError, OSError) as e:
+            print(f"❌ Critical Failure: Could not update {EXCLUDE_FILENAME}: {e}")
+            sys.exit(1)
+
     print("\n🚚 Files matched by this curation session:")
     moved_count = 0
     for source_full_path, rel_path in files_to_move:
@@ -186,13 +202,6 @@ def main():
             remaining_registry_records,
             f"ACTIVE DROPZONE REGISTRY - UPDATED ON {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         )
-        if new_exclusion_records:
-            try:
-                with open(exclusion_list_path, "a", encoding="utf-8") as f:
-                    for file_hash, rel_path in new_exclusion_records:
-                        f.write(f"{file_hash}\t{rel_path}\n")
-            except (IOError, OSError) as e:
-                print(f"❌ Critical Failure: Could not update {EXCLUDE_FILENAME}: {e}")
 
     print("\n" + "=" * 70)
     if is_dry_run:

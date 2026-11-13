@@ -144,6 +144,64 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         )
         self.assertTrue(os.path.exists(expected_moved_location), "The file structure layout was broken during movement.")
 
+    @patch("scripts.register_and_exclude.load_configuration")
+    def test_summary_lists_unreadable_files_and_per_folder_counts(self, mock_load_config):
+        import io
+        from contextlib import redirect_stdout
+        mock_load_config.return_value = self.mock_config
+
+        for name in ("a.jpg", "b.jpg"):
+            path = os.path.join(self.dropzone_path, "Phone1", "2026-09-20", name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(name.encode())
+
+        unreadable = os.path.join(self.dropzone_path, "SDCard", "2026-09-21", "locked.jpg")
+        os.makedirs(os.path.dirname(unreadable), exist_ok=True)
+        with open(unreadable, "wb") as f:
+            f.write(b"locked")
+        os.chmod(unreadable, 0o000)
+        output = io.StringIO()
+        try:
+            with redirect_stdout(output):
+                main()
+        finally:
+            os.chmod(unreadable, 0o644)
+        summary = output.getvalue().split("PROCESSING RUN COMPLETE")[1]
+
+        self.assertIn("Phone1/2026-09-20/  (2 files)", summary)
+        self.assertIn("could not be read", summary)
+        self.assertIn(os.path.join("SDCard", "2026-09-21", "locked.jpg"), summary)
+
+        registry_data = load_checksum_list(
+            os.path.join(self.dropzone_path, "registered.sha256"), is_local_registry=True
+        )
+        self.assertEqual(len(registry_data), 2)
+
+    @patch("scripts.register_and_exclude.load_configuration")
+    def test_failed_move_is_listed_and_not_counted_as_excluded(self, mock_load_config):
+        import io
+        from contextlib import redirect_stdout
+        mock_load_config.return_value = self.mock_config
+
+        with open(os.path.join(self.dropzone_path, "exclude.sha256"), "w", encoding="utf-8") as f:
+            f.write(f"{self.expected_hash}\told/photo.jpg\n")
+        stuck_dir = os.path.join(self.dropzone_path, "Phone1", "2026-09-20")
+        os.makedirs(stuck_dir, exist_ok=True)
+        with open(os.path.join(stuck_dir, "stuck.jpg"), "wb") as f:
+            f.write(self.sample_content)
+
+        output = io.StringIO()
+        with patch("scripts.register_and_exclude.shutil.move", side_effect=OSError("disk full")):
+            with redirect_stdout(output):
+                main()
+        summary = output.getvalue().split("PROCESSING RUN COMPLETE")[1]
+
+        self.assertIn("Files excluded       : 0", summary)
+        self.assertIn("move failed", summary)
+        self.assertIn(os.path.join("Phone1", "2026-09-20", "stuck.jpg"), summary)
+        self.assertTrue(os.path.exists(os.path.join(stuck_dir, "stuck.jpg")))
+
 
 if __name__ == "__main__":
     unittest.main()
