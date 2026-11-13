@@ -2,8 +2,10 @@
 import os
 import sys
 import json
+import re
 import json
 import shutil
+import traceback
 import signal
 import socket
 import getpass
@@ -28,6 +30,9 @@ LOCK_OWNER_FILENAME = "owner.json"
 
 # Value of "user_name" in config.json.template; it must be replaced by your own name.
 PLACEHOLDER_USER_NAME = "CHANGE_ME"
+
+# Value of "log_path" in config.json.template; it must be replaced by a real folder.
+PLACEHOLDER_LOG_PATH = "/path/to/your/storage/Logs"
 
 # One timestamp format for batch folder names and registry rows (YYYYMMDD_hhmmss).
 TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
@@ -71,6 +76,107 @@ def get_user_name(config: dict) -> str:
         print("❌ Execution Halting: 'user_name' in config.json must not contain tabs or line breaks.")
         sys.exit(1)
     return user_name
+
+
+def get_log_path(config: dict) -> str:
+    """Returns the shared log folder from config.json, or stops if it was never filled in."""
+    log_path = config.get("log_path")
+    log_path = log_path.strip() if isinstance(log_path, str) else ""
+    if not log_path or log_path == PLACEHOLDER_LOG_PATH:
+        print("❌ Execution Halting: 'log_path' in config.json is missing or still the placeholder.")
+        print(f"   Open {CONFIG_FILE_PATH} and set \"log_path\" to the shared folder where run logs are kept.")
+        sys.exit(1)
+    return log_path
+
+
+class _Tee:
+    """Passes everything written to a terminal stream on to the log file as well."""
+
+    def __init__(self, stream, log_file):
+        self._stream = stream
+        self._log_file = log_file
+        self._log_failed = False
+
+    def write(self, text):
+        written = self._stream.write(text)
+        if not self._log_failed:
+            try:
+                self._log_file.write(text)
+                self._log_file.flush()
+            except (OSError, ValueError):
+                self._log_failed = True
+                self._stream.write("\n⚠️  Writing to the log file failed; this run is no longer being logged.\n")
+        return written
+
+    def flush(self):
+        self._stream.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+@contextmanager
+def run_log(log_path: str, script_name: str, user_name: str, args: list):
+    """
+    Writes everything the run prints to a new log file in log_path, with a header
+    (who, when, which arguments) and a footer (how the run ended, including the
+    full error if it crashed). Stops if the log file cannot be created, so no run
+    goes unlogged.
+    """
+    started = datetime.now()
+    safe_user = re.sub(r"[^A-Za-z0-9._-]", "_", user_name)
+    base_name = f"{started.strftime(TIMESTAMP_FORMAT)}_{os.path.splitext(script_name)[0]}_{safe_user}"
+
+    log_file, log_file_path = None, None
+    try:
+        os.makedirs(log_path, exist_ok=True)
+        for counter in range(100):
+            candidate = os.path.join(log_path, base_name + (f"_{counter}" if counter else "") + ".log")
+            try:
+                log_file = open(candidate, "x", encoding="utf-8")
+                log_file_path = candidate
+                break
+            except FileExistsError:
+                continue
+    except OSError as e:
+        print(f"❌ Execution Halting: Cannot write logs to 'log_path' ({log_path}): {e}")
+        sys.exit(1)
+    if log_file is None:
+        print(f"❌ Execution Halting: Could not create a log file in {log_path}.")
+        sys.exit(1)
+
+    log_file.write(f"# script    : {script_name}\n# user      : {user_name}\n"
+                   f"# computer  : {socket.gethostname()}\n"
+                   f"# started   : {started.strftime(TIMESTAMP_FORMAT)}\n"
+                   f"# arguments : {' '.join(args) if args else '(none)'}\n\n")
+    log_file.flush()
+
+    original_stdout, original_stderr = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = _Tee(original_stdout, log_file), _Tee(original_stderr, log_file)
+    status = "finished normally"
+    try:
+        print(f"📝 Log file: {log_file_path}")
+        yield
+    except SystemExit as e:
+        status = f"stopped with exit status {0 if e.code is None else e.code}"
+        raise
+    except KeyboardInterrupt:
+        status = "interrupted (Ctrl-C)"
+        raise
+    except BaseException:
+        status = "CRASHED"
+        try:
+            log_file.write("\n" + traceback.format_exc())
+        except (OSError, ValueError):
+            pass
+        raise
+    finally:
+        sys.stdout, sys.stderr = original_stdout, original_stderr
+        try:
+            log_file.write(f"\n# ended     : {datetime.now().strftime(TIMESTAMP_FORMAT)}\n# result    : {status}\n")
+            log_file.close()
+        except (OSError, ValueError):
+            pass
 
 
 def load_checksum_list(file_path: str, is_local_registry: bool = False) -> set:
@@ -149,7 +255,7 @@ def has_unsupported_name(relative_path: str) -> bool:
     return any(char in relative_path for char in ("\t", "\n", "\r"))
 
 
-def check_folder_layout(dropzone_path: str, excluded_path: str, session_path: str = None):
+def check_folder_layout(dropzone_path: str, excluded_path: str, session_path: str = None, log_path: str = None):
     """
     Returns an error message if the folders overlap in a way that would make the
     scripts treat their own output as new files, otherwise None.
@@ -164,6 +270,8 @@ def check_folder_layout(dropzone_path: str, excluded_path: str, session_path: st
         return "'dropzone_path' must not be inside (or the same as) 'excluded_path'."
     if session_path and is_inside(session_path, dropzone_path):
         return "The session folder must not be inside the Dropzone."
+    if log_path and is_inside(log_path, dropzone_path):
+        return "'log_path' must not be inside the Dropzone."
     return None
 
 

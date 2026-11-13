@@ -22,6 +22,8 @@ from scripts.common import (
     append_checksum_lines,
     check_folder_layout,
     get_user_name,
+    get_log_path,
+    run_log,
     normalize_path,
     pipeline_lock,
     TIMESTAMP_FORMAT,
@@ -58,9 +60,15 @@ def main():
         print("  Do it for real                : python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date --commit")
         sys.exit(1)
 
-    is_dry_run = wants_dry_run
+    config = load_configuration()
+    user_name = get_user_name(config)
+    log_path = get_log_path(config)
 
-    session_path = args[0]
+    with run_log(log_path, "finalize_curation.py", user_name, sys.argv[1:]):
+        run(wants_dry_run, args[0], config, user_name)
+
+
+def run(is_dry_run, session_path, config, user_name):
     original_path = os.path.join(session_path, ORIGINAL_DIRNAME)
     sorted_path = os.path.join(session_path, SORTED_DIRNAME)
 
@@ -71,7 +79,6 @@ def main():
         print(f"❌ Execution Halting: No '{SORTED_DIRNAME}/' folder found inside:\n   '{session_path}'")
         sys.exit(1)
 
-    config = load_configuration()
     dropzone_path = config.get("dropzone_path")
     excluded_root_dir = config.get("excluded_path")
 
@@ -82,12 +89,10 @@ def main():
         print("❌ Execution Halting: 'excluded_path' configuration is missing from config.json.")
         sys.exit(1)
 
-    layout_problem = check_folder_layout(dropzone_path, excluded_root_dir, session_path)
+    layout_problem = check_folder_layout(dropzone_path, excluded_root_dir, session_path, config.get("log_path"))
     if layout_problem:
         print(f"❌ Execution Halting: {layout_problem}")
         sys.exit(1)
-
-    user_name = get_user_name(config)
 
     with pipeline_lock(dropzone_path, "finalize_curation.py"):
         process(is_dry_run, session_path, original_path, sorted_path, dropzone_path, excluded_root_dir, user_name)

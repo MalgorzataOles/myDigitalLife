@@ -22,6 +22,13 @@ class TestPreviewPendingRemoval(unittest.TestCase):
 
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
+        config = {"dropzone_path": os.path.join(self.test_dir, "Dropzone"),
+                  "excluded_path": os.path.join(self.test_dir, "Excluded"),
+                  "user_name": "Tester",
+                  "log_path": os.path.join(self.test_dir, "Logs")}
+        patcher = patch("scripts.preview_pending_removal.load_configuration", return_value=config)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.session_path = os.path.join(self.test_dir, "Workspace", "Gosia_2026-09-25")
         self.original_path = os.path.join(self.session_path, "Original")
         self.sorted_path = os.path.join(self.session_path, "Sorted")

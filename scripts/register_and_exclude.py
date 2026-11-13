@@ -19,6 +19,8 @@ from scripts.common import (
     has_unsupported_name,
     check_folder_layout,
     get_user_name,
+    get_log_path,
+    run_log,
     pipeline_lock,
     LOCK_DIRNAME,
     is_ignored_dropzone_file,
@@ -31,7 +33,14 @@ from scripts.common import (
 
 def main():
     config = load_configuration()
+    user_name = get_user_name(config)
+    log_path = get_log_path(config)
 
+    with run_log(log_path, "register_and_exclude.py", user_name, sys.argv[1:]):
+        run(config, user_name)
+
+
+def run(config, user_name):
     dropzone_path = config.get("dropzone_path")
     excluded_root_dir = config.get("excluded_path")
 
@@ -43,12 +52,10 @@ def main():
         print("❌ Execution Halting: 'excluded_path' configuration is completely missing from config.json.")
         sys.exit(1)
 
-    layout_problem = check_folder_layout(dropzone_path, excluded_root_dir)
+    layout_problem = check_folder_layout(dropzone_path, excluded_root_dir, log_path=config.get("log_path"))
     if layout_problem:
         print(f"❌ Execution Halting: {layout_problem}")
         sys.exit(1)
-
-    user_name = get_user_name(config)
 
     with pipeline_lock(dropzone_path, "register_and_exclude.py"):
         process(dropzone_path, excluded_root_dir, user_name)

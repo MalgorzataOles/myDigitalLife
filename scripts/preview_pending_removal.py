@@ -8,7 +8,7 @@ REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
-from scripts.common import hash_files_in
+from scripts.common import hash_files_in, load_configuration, get_user_name, get_log_path, run_log
 
 ORIGINAL_DIRNAME = "Original"
 SORTED_DIRNAME = "Sorted"
@@ -21,7 +21,15 @@ def main():
         print("Usage: python3 scripts/preview_pending_removal.py /path/to/Workspace/Name_Date")
         sys.exit(1)
 
-    session_path = sys.argv[1]
+    config = load_configuration()
+    user_name = get_user_name(config)
+    log_path = get_log_path(config)
+
+    with run_log(log_path, "preview_pending_removal.py", user_name, sys.argv[1:]):
+        run(sys.argv[1])
+
+
+def run(session_path):
     original_path = os.path.join(session_path, ORIGINAL_DIRNAME)
     sorted_path = os.path.join(session_path, SORTED_DIRNAME)
     preview_path = os.path.join(session_path, PREVIEW_DIRNAME)

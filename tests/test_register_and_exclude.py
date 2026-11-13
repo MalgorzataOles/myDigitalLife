@@ -38,6 +38,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
             "dropzone_path": self.dropzone_path,
             "excluded_path": self.excluded_path,
             "user_name": "Tester",
+            "log_path": os.path.join(self.test_dir, "Logs"),
         }
 
         # Create a test file with known content to compute explicit expected hash value

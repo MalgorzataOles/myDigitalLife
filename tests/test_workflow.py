@@ -33,7 +33,8 @@ class WorkflowTestCase(unittest.TestCase):
         os.makedirs(self.dropzone)
         os.makedirs(os.path.join(self.session, "Original"))
         os.makedirs(os.path.join(self.session, "Sorted"))
-        self.config = {"dropzone_path": self.dropzone, "excluded_path": self.excluded, "user_name": "Tester"}
+        self.config = {"dropzone_path": self.dropzone, "excluded_path": self.excluded, "user_name": "Tester",
+                       "log_path": os.path.join(self.test_dir, "Logs")}
         self.registry = os.path.join(self.dropzone, "registered.sha256")
         self.ledger = os.path.join(self.dropzone, "exclude.sha256")
 
@@ -78,10 +79,7 @@ class TestFullWorkflow(WorkflowTestCase):
         self.write(os.path.join(self.session, "Sorted", "Holiday", "a.jpg"), b"photo a")
 
         # 4. Preview shows b.jpg and changes nothing in Dropzone.
-        preview_pending_removal_args = [self.session]
-        with patch.object(sys, "argv", ["preview", *preview_pending_removal_args]):
-            with redirect_stdout(io.StringIO()):
-                preview_pending_removal.main()
+        self.run_script(preview_pending_removal, self.session)
         self.assertTrue(os.path.exists(os.path.join(self.session, "ToBeDeleted", "b.jpg")))
 
         # 5. A dry run changes nothing.
@@ -257,6 +255,94 @@ class TestUserName(WorkflowTestCase):
         self.assertEqual(user, "Anna")
         archived_batches = os.listdir(self.excluded)
         self.assertEqual(archived_batches, [f"curation_{timestamp}"], "ledger timestamp must match the folder name")
+
+
+class TestRunLog(WorkflowTestCase):
+    def setUp(self):
+        super().setUp()
+        self.logs = os.path.join(self.test_dir, "Logs")
+        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+
+    def only_log(self) -> str:
+        names = os.listdir(self.logs)
+        self.assertEqual(len(names), 1, names)
+        with open(os.path.join(self.logs, names[0]), encoding="utf-8") as f:
+            return names[0], f.read()
+
+    def test_log_contains_header_terminal_output_and_footer(self):
+        self.register()
+        name, log = self.only_log()
+        self.assertRegex(name, r"^\d{8}_\d{6}_register_and_exclude_Tester\.log$")
+        self.assertIn("# user      : Tester", log)
+        self.assertIn("# script    : register_and_exclude.py", log)
+        self.assertIn("[NEW ENTRY] Registered -> Phone1", log)
+        self.assertIn("PROCESSING RUN COMPLETE", log)
+        self.assertIn("# result    : finished normally", log)
+
+    def test_finalize_dry_run_is_logged_with_its_arguments(self):
+        self.register()
+        self.finalize("--dry-run")
+        logs = sorted(os.listdir(self.logs))
+        self.assertEqual(len(logs), 2)
+        with open(os.path.join(self.logs, [n for n in logs if "finalize" in n][0]), encoding="utf-8") as f:
+            log = f.read()
+        self.assertIn("--dry-run", log)
+        self.assertIn("DRY-RUN ONLY", log)
+
+    def test_two_runs_in_the_same_second_get_separate_logs(self):
+        self.register()
+        self.register()
+        self.assertEqual(len(os.listdir(self.logs)), 2)
+
+    def test_preview_is_logged(self):
+        self.run_script(preview_pending_removal, self.session)
+        _, log = self.only_log()
+        self.assertIn("# script    : preview_pending_removal.py", log)
+        self.assertIn("PREVIEW COMPLETE", log)
+
+    def test_a_crash_is_logged_with_the_full_error(self):
+        with patch.object(register_and_exclude, "process", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                self.register()
+        _, log = self.only_log()
+        self.assertIn("Traceback", log)
+        self.assertIn("RuntimeError: boom", log)
+        self.assertIn("# result    : CRASHED", log)
+
+    def test_a_run_stopped_by_the_lock_is_logged(self):
+        os.mkdir(os.path.join(self.dropzone, ".pipeline.lock"))
+        with self.assertRaises(SystemExit):
+            self.register()
+        _, log = self.only_log()
+        self.assertIn("another run is in progress", log)
+        self.assertIn("# result    : stopped with exit status 1", log)
+
+    def test_missing_or_placeholder_log_path_stops_the_run(self):
+        for value in (None, "", "/path/to/your/storage/Logs"):
+            with self.subTest(log_path=value):
+                if value is None:
+                    del self.config["log_path"]
+                else:
+                    self.config["log_path"] = value
+                with self.assertRaises(SystemExit) as cm:
+                    self.register()
+                self.assertEqual(cm.exception.code, 1)
+                self.assertIn("log_path", self.last_output)
+                self.assertFalse(os.path.exists(self.registry))
+
+    def test_log_folder_inside_dropzone_is_refused(self):
+        self.config["log_path"] = os.path.join(self.dropzone, "Logs")
+        with self.assertRaises(SystemExit):
+            self.register()
+        self.assertFalse(os.path.exists(self.registry))
+
+    def test_unwritable_log_folder_stops_the_run(self):
+        blocker = os.path.join(self.test_dir, "not_a_folder")
+        open(blocker, "w").close()
+        self.config["log_path"] = os.path.join(blocker, "Logs")
+        with self.assertRaises(SystemExit):
+            self.register()
+        self.assertFalse(os.path.exists(self.registry))
 
 
 if __name__ == "__main__":
