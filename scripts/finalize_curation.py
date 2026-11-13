@@ -47,13 +47,27 @@ def main():
     args = sys.argv[1:]
     wants_dry_run = "--dry-run" in args
     wants_commit = "--commit" in args
-    args = [arg for arg in args if arg not in ("--dry-run", "--commit")]
+    unknown_options = [arg for arg in args if arg.startswith("--") and arg not in ("--dry-run", "--commit")]
+    paths = [arg for arg in args if not arg.startswith("--")]
 
-    if not args or wants_dry_run == wants_commit:
-        if args and wants_dry_run and wants_commit:
-            print("❌ Execution Error: Use either --dry-run or --commit, not both.")
-        else:
-            print("❌ Execution Error: Tell me what to do - nothing has been changed.")
+    problem = None
+    if unknown_options:
+        problem = f"Unknown option: {' '.join(unknown_options)}"
+    elif wants_dry_run and wants_commit:
+        problem = "Use either --dry-run or --commit, not both."
+    elif not paths and not (wants_dry_run or wants_commit):
+        problem = "Missing the path to the curated session folder and the mode (--dry-run or --commit)."
+    elif not paths:
+        problem = "Missing the path to the curated session folder (the Name_Date folder inside Workspace)."
+    elif len(paths) > 1:
+        problem = (f"Expected one folder path but got {len(paths)}: {' | '.join(paths)}\n"
+                   "   If the path contains spaces, put it in quotes.")
+    elif not (wants_dry_run or wants_commit):
+        problem = "Missing the mode: add --dry-run (preview only) or --commit (do it for real)."
+
+    if problem:
+        print(f"❌ Execution Error: {problem}")
+        print("   Nothing has been changed.")
         print("")
         print("Usage (choose one):")
         print("  Preview only, changes nothing : python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date --dry-run")
@@ -65,7 +79,7 @@ def main():
     log_path = get_log_path(config)
 
     with run_log(log_path, "finalize_curation.py", user_name, sys.argv[1:]):
-        run(wants_dry_run, args[0], config, user_name)
+        run(wants_dry_run, paths[0], config, user_name)
 
 
 def run(is_dry_run, session_path, config, user_name):

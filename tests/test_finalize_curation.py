@@ -393,6 +393,41 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         self.assertTrue(os.path.exists(dropzone_file), "the untouched Dropzone original stays")
         self.assertEqual(len(read_checksum_pairs(self.registry_path)), 1)
 
+    def _usage_error_output(self, *argv_tail):
+        import io
+        from contextlib import redirect_stdout
+        output = io.StringIO()
+        with patch("scripts.finalize_curation.load_configuration", return_value=self.mock_config):
+            with patch.object(sys, "argv", ["finalize_curation.py", *argv_tail]):
+                with redirect_stdout(output):
+                    with self.assertRaises(SystemExit) as cm:
+                        main()
+        self.assertEqual(cm.exception.code, 1)
+        return output.getvalue()
+
+    def test_missing_folder_path_is_named_as_the_problem(self):
+        for flag in ("--dry-run", "--commit"):
+            output = self._usage_error_output(flag)
+            self.assertIn("Missing the path to the curated session folder", output)
+            self.assertNotIn("Missing the mode", output)
+
+    def test_missing_mode_is_named_as_the_problem(self):
+        output = self._usage_error_output(self.session_path)
+        self.assertIn("Missing the mode", output)
+
+    def test_missing_everything_names_both(self):
+        output = self._usage_error_output()
+        self.assertIn("path to the curated session folder and the mode", output)
+
+    def test_misspelled_option_is_reported(self):
+        output = self._usage_error_output(self.session_path, "--dryrun")
+        self.assertIn("Unknown option: --dryrun", output)
+
+    def test_unquoted_path_with_spaces_is_explained(self):
+        output = self._usage_error_output("/some/Name", "Date", "--dry-run")
+        self.assertIn("Expected one folder path but got 2", output)
+        self.assertIn("quotes", output)
+
 
 if __name__ == "__main__":
     unittest.main()
