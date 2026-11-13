@@ -21,6 +21,7 @@ from scripts.common import (
     write_checksum_pairs,
     append_checksum_lines,
     check_folder_layout,
+    normalize_path,
     pipeline_lock,
     TIMESTAMP_FORMAT,
     REGISTRY_FILENAME,
@@ -185,6 +186,30 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
             for rel_path, extra_columns in dropzone_paths:
                 remaining_registry_records.append((file_hash, rel_path, *extra_columns))
 
+    # Files in Original/ that Dropzone does not know are still "curated after
+    # all": their hashes go into the ledger so the same content is caught if it
+    # is ever dumped into Dropzone later. Often they are harmless (they came
+    # from somewhere else), but a changed copy of a Dropzone file looks exactly
+    # the same, and its untouched original then stays in Dropzone. So list them,
+    # and point out ones whose name matches a Dropzone file that is left over.
+    registry_hashes = set(registry_by_hash)
+    unmatched_original = sorted(
+        rel_path for rel_path, file_hash in original_entries.items() if file_hash not in registry_hashes
+    )
+    leftover_names = defaultdict(list)
+    for file_hash, dropzone_paths in registry_by_hash.items():
+        if file_hash not in handled_hashes:
+            for rel_path, _ in dropzone_paths:
+                leftover_names[normalize_path(os.path.basename(rel_path)).casefold()].append(rel_path)
+
+    pending_hashes = {file_hash for file_hash, _ in new_exclusion_records}
+    original_only_records = []
+    for file_hash in sorted({original_entries[rel_path] for rel_path in unmatched_original}):
+        if file_hash not in existing_exclusion_hashes and file_hash not in pending_hashes:
+            annotated_path = sorted_hash_to_path.get(file_hash) or original_hash_to_path.get(file_hash)
+            original_only_records.append((file_hash, annotated_path))
+    new_exclusion_records += original_only_records
+
     # Order matters for safe re-runs after an interruption: record the ledger
     # first, move files second, and rewrite the registry last. Whatever stage
     # was interrupted, running this again completes the remaining stages.
@@ -229,6 +254,21 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
             print("   The files were moved, but the registry was not updated. Run this again.")
             sys.exit(1)
 
+    if unmatched_original:
+        print("\n⚠️  Files in Original/ that are not in the Dropzone registry:")
+        for rel_path in unmatched_original:
+            print(f"   - {rel_path}")
+            lookalikes = leftover_names.get(normalize_path(os.path.basename(rel_path)).casefold())
+            if lookalikes:
+                print(f"       possibly a changed copy of Dropzone/{lookalikes[0]}"
+                      f"{' (and others)' if len(lookalikes) > 1 else ''}, which stays in Dropzone")
+        if is_dry_run:
+            print(f"   Their content WILL BE recorded in {EXCLUDE_FILENAME} when you run with --commit.")
+        else:
+            print(f"   Their content was recorded in {EXCLUDE_FILENAME}.")
+        print("   If a file was changed by mistake, put the untouched copy from Dropzone back")
+        print("   into Original/ and run this again before using --commit.")
+
     print("\n" + "=" * 70)
     if is_dry_run:
         print(" DRY-RUN ONLY: NOTHING WAS CHANGED, THE CURATION IS NOT FINALIZED YET")
@@ -238,6 +278,7 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
     print("=" * 70)
     print(f" Files matched in this session           : {moved_count}")
     print(f" New entries added to {EXCLUDE_FILENAME:<17}: {len(new_exclusion_records)}")
+    print(f" Original/ files not in Dropzone          : {len(unmatched_original)}")
     print(f" Remaining entries in Dropzone registry   : {len(remaining_registry_records)}")
     print("=" * 70 + "\n")
 

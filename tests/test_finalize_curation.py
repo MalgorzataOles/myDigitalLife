@@ -348,6 +348,49 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
                     main()
         self.assertEqual(cm.exception.code, 1)
 
+    def _run_capturing_output(self, commit):
+        import io
+        from contextlib import redirect_stdout
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self._run(commit=commit)
+        return output.getvalue()
+
+    def test_original_files_unknown_to_dropzone_are_listed_and_recorded_on_commit(self):
+        self._write(os.path.join(self.original_path, "from_elsewhere.jpg"), b"not from dropzone")
+        self._write(os.path.join(self.sorted_path, "Trips", "from_elsewhere.jpg"), b"not from dropzone")
+        from scripts.common import calculate_sha256
+        expected_hash = calculate_sha256(os.path.join(self.original_path, "from_elsewhere.jpg"))
+
+        dry_output = self._run_capturing_output(commit=False)
+        self.assertIn("not in the Dropzone registry", dry_output)
+        self.assertIn("from_elsewhere.jpg", dry_output)
+        self.assertIn("WILL BE recorded", dry_output)
+        self.assertFalse(os.path.exists(self.exclusion_path), "a dry run must not touch the ledger")
+
+        commit_output = self._run_capturing_output(commit=True)
+        self.assertIn("was recorded", commit_output)
+        self.assertEqual(
+            read_checksum_pairs(self.exclusion_path), [(expected_hash, "Trips/from_elsewhere.jpg")]
+        )
+
+        self._run(commit=True)
+        self.assertEqual(len(read_checksum_pairs(self.exclusion_path)), 1, "re-running must not duplicate entries")
+
+    def test_changed_copy_of_a_dropzone_file_is_flagged_by_name(self):
+        from scripts.common import calculate_sha256
+        dropzone_file = os.path.join(self.dropzone_path, "Phone1", "20260920", "IMG_0042.jpg")
+        self._write(dropzone_file, b"original bytes")
+        with open(self.registry_path, "w", encoding="utf-8") as f:
+            f.write(f"{calculate_sha256(dropzone_file)}\tPhone1/20260920/IMG_0042.jpg\n")
+        self._write(os.path.join(self.original_path, "IMG_0042.jpg"), b"rotated bytes")
+
+        output = self._run_capturing_output(commit=True)
+
+        self.assertIn("possibly a changed copy of Dropzone/Phone1/20260920/IMG_0042.jpg", output)
+        self.assertTrue(os.path.exists(dropzone_file), "the untouched Dropzone original stays")
+        self.assertEqual(len(read_checksum_pairs(self.registry_path)), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

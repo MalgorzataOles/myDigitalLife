@@ -95,6 +95,8 @@ The two subfolders are:
 
 **The one rule to remember:** if you remove a file from `Sorted/` because you've changed your mind and do **not** want its Dropzone original archived at all (i.e. you don't want it treated as reviewed), you must also delete it from `Original/`. Otherwise its mere presence in `Original/` is enough to mark it "handled".
 
+**Never edit files inside `Original/`** (no rotating, re-saving or renaming in an editor): a changed file no longer matches its Dropzone original, so that original would stay behind in Dropzone. Do your edits on the copy in `Sorted/`. If `Original/` contains files that Dropzone doesn't know, `finalize_curation.py` lists them in both `--dry-run` and `--commit`, flags ones that look like a changed copy of a Dropzone file, and (with `--commit`) records their content in `exclude.sha256` like everything else you curated.
+
 **Duplicate filing is not supported.** If the exact same file content ends up at two different paths inside `Sorted/` (e.g. filed under both "Family" and "Beach"), `finalize_curation.py` will print both paths and abort before touching anything. Resolve it by keeping only one copy and re-run.
 
 ## 🧪 Running Automated Unit Tests
