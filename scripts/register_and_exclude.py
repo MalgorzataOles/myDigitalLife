@@ -103,7 +103,7 @@ def process(dropzone_path, excluded_root_dir, user_name, state_path):
     print(f" Scanning folder   : {dropzone_path}")
     print(f" Registry file     : {registry_path}")
     if os.path.exists(exclusion_list_path) and len(exclusion_set) > 0:
-        print(f" Exclusion file    : {exclusion_list_path} ({len(exclusion_set)} items loaded)")
+        print(f" Exclusion file    : {exclusion_list_path}")
     print("~" * 60 + "\n")
 
     new_entries = []
