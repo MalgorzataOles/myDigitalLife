@@ -360,7 +360,8 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
     print(f" New entries added to {EXCLUDE_FILENAME:<17}: {len(new_exclusion_records)}")
     print(f"   of which only in Sorted/ (new or edited): {len(sorted_only_records)}")
     print(f" Original/ files not in Dropzone          : {len(unmatched_original)}")
-    print(f" Remaining entries in Dropzone registry   : {len(remaining_registry_records)}")
+    if is_dry_run:
+        print(f" Remaining entries in Dropzone registry   : {len(remaining_registry_records)}")
     print("=" * 70 + "\n")
 
 
