@@ -361,20 +361,16 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
             self._run(commit=commit)
         return output.getvalue()
 
-    def test_original_files_unknown_to_dropzone_are_listed_and_recorded_on_commit(self):
+    def test_original_files_unknown_to_dropzone_are_recorded_on_commit(self):
         self._write(os.path.join(self.original_path, "from_elsewhere.jpg"), b"not from dropzone")
         self._write(os.path.join(self.sorted_path, "Trips", "from_elsewhere.jpg"), b"not from dropzone")
         from scripts.common import calculate_sha256
         expected_hash = calculate_sha256(os.path.join(self.original_path, "from_elsewhere.jpg"))
 
-        dry_output = self._run_capturing_output(commit=False)
-        self.assertIn("not in the Dropzone registry", dry_output)
-        self.assertIn("from_elsewhere.jpg", dry_output)
-        self.assertIn("WILL BE recorded", dry_output)
+        self._run_capturing_output(commit=False)
         self.assertFalse(os.path.exists(self.exclusion_path), "a dry run must not touch the ledger")
 
-        commit_output = self._run_capturing_output(commit=True)
-        self.assertIn("was recorded", commit_output)
+        self._run_capturing_output(commit=True)
         self.assertEqual(
             read_checksum_pairs(self.exclusion_path), [(expected_hash, "Trips/from_elsewhere.jpg")]
         )
@@ -382,19 +378,23 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         self._run(commit=True)
         self.assertEqual(len(read_checksum_pairs(self.exclusion_path)), 1, "re-running must not duplicate entries")
 
-    def test_changed_copy_of_a_dropzone_file_is_flagged_by_name(self):
-        from scripts.common import calculate_sha256
-        dropzone_file = os.path.join(self.dropzone_path, "Phone1", "20260920", "IMG_0042.jpg")
-        self._write(dropzone_file, b"original bytes")
-        with open(self.registry_path, "w", encoding="utf-8") as f:
-            f.write(f"{calculate_sha256(dropzone_file)}\tPhone1/20260920/IMG_0042.jpg\n")
-        self._write(os.path.join(self.original_path, "IMG_0042.jpg"), b"rotated bytes")
+    def test_summary_counts_files_in_original_and_sorted(self):
+        for name in ("kept1.jpg", "kept2.jpg", "dropped1.jpg", "dropped2.jpg", "dropped3.jpg"):
+            self._write(os.path.join(self.original_path, name), name.encode())
+        for name in ("kept1.jpg", "kept2.jpg"):
+            self._write(os.path.join(self.sorted_path, "Album", name), name.encode())
+        for name in ("edited1.jpg", "edited2.jpg"):
+            self._write(os.path.join(self.sorted_path, "Album", name), name.encode())
 
-        output = self._run_capturing_output(commit=True)
+        for commit in (False, True):
+            output = self._run_capturing_output(commit=commit)
+            self.assertRegex(output, r"Files in Original/\s*: 5")
+            self.assertRegex(output, r"Files in Sorted/\s*: 4")
+            self.assertRegex(output, r"In both Original/ and Sorted/\s*: 2")
+            self.assertRegex(output, r"Only in Original/ \(not in Sorted/\)\s*: 3")
+            self.assertRegex(output, r"Only in Sorted/ \(not in Original/\)\s*: 2")
+        self.assertNotIn("possibly a changed copy", output)
 
-        self.assertIn("possibly a changed copy of Dropzone/Phone1/20260920/IMG_0042.jpg", output)
-        self.assertTrue(os.path.exists(dropzone_file), "the untouched Dropzone original stays")
-        self.assertEqual(len(read_checksum_pairs(self.registry_path)), 1)
 
     def _usage_error_output(self, *argv_tail):
         import io

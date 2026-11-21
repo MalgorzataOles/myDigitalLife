@@ -29,7 +29,6 @@ from scripts.common import (
     get_state_path,
     legacy_state_files_in_dropzone,
     run_log,
-    normalize_path,
     pipeline_lock,
     TIMESTAMP_FORMAT,
     REGISTRY_FILENAME,
@@ -213,7 +212,9 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
     for rel_path, file_hash in original_entries.items():
         original_hash_to_path.setdefault(file_hash, rel_path)
 
-    handled_hashes = set(sorted_entries.values()) | set(original_entries.values())
+    sorted_hash_set = set(sorted_entries.values())
+    original_hash_set = set(original_entries.values())
+    handled_hashes = sorted_hash_set | original_hash_set
 
     exclusion_list_path = os.path.join(state_path, EXCLUDE_FILENAME)
 
@@ -246,19 +247,11 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
 
     # Files in Original/ that Dropzone does not know are still "curated after
     # all": their hashes go into the ledger so the same content is caught if it
-    # is ever dumped into Dropzone later. Often they are harmless (they came
-    # from somewhere else), but a changed copy of a Dropzone file looks exactly
-    # the same, and its untouched original then stays in Dropzone. So list them,
-    # and point out ones whose name matches a Dropzone file that is left over.
+    # is ever dumped into Dropzone later.
     registry_hashes = set(registry_by_hash)
     unmatched_original = sorted(
         rel_path for rel_path, file_hash in original_entries.items() if file_hash not in registry_hashes
     )
-    leftover_names = defaultdict(list)
-    for file_hash, dropzone_paths in registry_by_hash.items():
-        if file_hash not in handled_hashes:
-            for rel_path, _ in dropzone_paths:
-                leftover_names[normalize_path(os.path.basename(rel_path)).casefold()].append(rel_path)
 
     pending_hashes = {file_hash for file_hash, _ in new_exclusion_records}
     original_only_records = []
@@ -334,20 +327,9 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
             print("   The files were moved, but the registry was not updated. Run this again.")
             sys.exit(1)
 
-    if unmatched_original:
-        print("\n⚠️  Files in Original/ that are not in the Dropzone registry:")
-        for rel_path in unmatched_original:
-            print(f"   - {rel_path}")
-            lookalikes = leftover_names.get(normalize_path(os.path.basename(rel_path)).casefold())
-            if lookalikes:
-                print(f"       possibly a changed copy of Dropzone/{lookalikes[0]}"
-                      f"{' (and others)' if len(lookalikes) > 1 else ''}, which stays in Dropzone")
-        if is_dry_run:
-            print(f"   Their content WILL BE recorded in {EXCLUDE_FILENAME} when you run with --commit.")
-        else:
-            print(f"   Their content was recorded in {EXCLUDE_FILENAME}.")
-        print("   If a file was changed by mistake, put the untouched copy from Dropzone back")
-        print("   into Original/ and run this again before using --commit.")
+    only_in_original = sum(1 for file_hash in original_entries.values() if file_hash not in sorted_hash_set)
+    in_both = len(original_entries) - only_in_original
+    only_in_sorted = sum(1 for file_hash in sorted_entries.values() if file_hash not in original_hash_set)
 
     print("\n" + "=" * 70)
     if is_dry_run:
@@ -356,10 +338,14 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
     else:
         print(" CURATION FINALIZATION COMPLETE")
     print("=" * 70)
+    print(f" Files in Original/                     : {len(original_entries)}")
+    print(f" Files in Sorted/                       : {len(sorted_entries)}")
+    print(f" In both Original/ and Sorted/          : {in_both}")
+    print(f" Only in Original/ (not in Sorted/)     : {only_in_original}")
+    print(f" Only in Sorted/ (not in Original/)     : {only_in_sorted}")
+    print()
     print(f" Files matched in this session           : {moved_count}")
     print(f" New entries added to {EXCLUDE_FILENAME:<17}: {len(new_exclusion_records)}")
-    print(f"   of which only in Sorted/ (new or edited): {len(sorted_only_records)}")
-    print(f" Original/ files not in Dropzone          : {len(unmatched_original)}")
     if is_dry_run:
         print(f" Remaining entries in Dropzone registry   : {len(remaining_registry_records)}")
     print("=" * 70 + "\n")
