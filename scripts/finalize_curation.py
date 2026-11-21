@@ -268,6 +268,17 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
             original_only_records.append((file_hash, annotated_path))
     new_exclusion_records += original_only_records
 
+    # Everything in Sorted/ is the curated result, including edited versions
+    # of files and files that never came through Dropzone. Recording them means
+    # the same content is recognized as curated if it is ever uploaded later.
+    recorded_hashes = {file_hash for file_hash, _ in new_exclusion_records}
+    sorted_only_records = [
+        (file_hash, rel_path)
+        for rel_path, file_hash in sorted(sorted_entries.items())
+        if file_hash not in existing_exclusion_hashes and file_hash not in recorded_hashes
+    ]
+    new_exclusion_records += sorted_only_records
+
     # Order matters for safe re-runs after an interruption: record the ledger
     # first, move files second, and rewrite the registry last. Whatever stage
     # was interrupted, running this again completes the remaining stages.
@@ -347,6 +358,7 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
     print("=" * 70)
     print(f" Files matched in this session           : {moved_count}")
     print(f" New entries added to {EXCLUDE_FILENAME:<17}: {len(new_exclusion_records)}")
+    print(f"   of which only in Sorted/ (new or edited): {len(sorted_only_records)}")
     print(f" Original/ files not in Dropzone          : {len(unmatched_original)}")
     print(f" Remaining entries in Dropzone registry   : {len(remaining_registry_records)}")
     print("=" * 70 + "\n")

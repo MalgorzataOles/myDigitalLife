@@ -31,7 +31,7 @@ myDigitalLife/
   │                # Contains only uploaded content, none of the scripts' own files.
   ├── State/       # The scripts' own files (state_path in config.json), not for people to edit:
   │                #   registered.sha256  - every Dropzone file already seen: hash, path, registration time, who registered it
-  │                #   exclude.sha256     - hashes already fully processed: hash, path, time, who finalized it
+  │                #   exclude.sha256     - content already curated: hash, path, time, who finalized it
   │                #   .pipeline.lock     - exists only while a run is in progress
   ├── Logs/        # One log file per script run, shared by everyone (see "Run logs" below)
   └── Excluded/    # Archive. Nothing here is ever read back automatically.
@@ -106,6 +106,8 @@ The two subfolders are:
 `finalize_curation.py` treats a file as "handled" if its hash shows up **anywhere in `Original/` OR `Sorted/`** - not just in `Sorted/`. This is deliberate: it's what lets you freely delete things from `Sorted/` mid-session (because you decided you don't want that file in your final layout) while the corresponding Dropzone original still gets safely archived, since you did review it.
 
 **The one rule to remember:** if you remove a file from `Sorted/` because you've changed your mind and do **not** want its Dropzone original archived at all (i.e. you don't want it treated as reviewed), you must also delete it from `Original/`. Otherwise its mere presence in `Original/` is enough to mark it "handled".
+
+**What gets recorded in `exclude.sha256`:** the content of everything you curated, so that the same content is recognized and moved to `Excluded/` if it is ever uploaded to Dropzone again. That is (1) every Dropzone file that matches something in `Original/` or `Sorted/`, (2) every file in `Original/` that Dropzone doesn't know, and (3) **every file in `Sorted/`**, also edited versions and files that never came through Dropzone. Point 3 matters because an edited file (rotated, cropped, re-saved) has new content: without its own entry, the same edited file uploaded later would be offered for curation again.
 
 **Never edit files inside `Original/`** (no rotating, re-saving or renaming in an editor): a changed file no longer matches its Dropzone original, so that original would stay behind in Dropzone. Do your edits on the copy in `Sorted/`. If `Original/` contains files that Dropzone doesn't know, `finalize_curation.py` lists them in both `--dry-run` and `--commit`, flags ones that look like a changed copy of a Dropzone file, and (with `--commit`) records their content in `exclude.sha256` like everything else you curated.
 

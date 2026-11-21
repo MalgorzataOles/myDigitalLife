@@ -533,5 +533,41 @@ class TestSyncConflicts(WorkflowTestCase):
         self.assertEqual(len(read_checksum_rows(self.registry)), 0)
 
 
+class TestEditedFilesAreRecorded(WorkflowTestCase):
+    def setUp(self):
+        super().setUp()
+        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"original a")
+        self.register()
+        self.write(os.path.join(self.session, "Original", "a.jpg"), b"original a")
+        self.write(os.path.join(self.session, "Sorted", "Holiday", "a.jpg"), b"rotated a")
+
+    def ledger_hashes(self):
+        return {row[0] for row in read_checksum_rows(self.ledger)} if os.path.exists(self.ledger) else set()
+
+    def test_edited_file_only_in_sorted_is_recorded_and_caught_when_uploaded_later(self):
+        self.finalize("--commit")
+        self.assertEqual(len(self.ledger_hashes()), 2, "the original content and the edited content")
+
+        self.write(os.path.join(self.dropzone, "Phone2", "20261001", "rotated_again.jpg"), b"rotated a")
+        self.write(os.path.join(self.dropzone, "Phone2", "20261001", "new.jpg"), b"unrelated")
+        self.register()
+        self.assertFalse(os.path.exists(os.path.join(self.dropzone, "Phone2", "20261001", "rotated_again.jpg")))
+        self.assertEqual([os.path.basename(r[1]) for r in read_checksum_rows(self.registry)], ["new.jpg"])
+
+    def test_a_file_added_straight_to_sorted_is_recorded_with_its_sorted_path(self):
+        self.write(os.path.join(self.session, "Sorted", "Scans", "letter.pdf"), b"a scan")
+        self.finalize("--commit")
+        paths = {row[1] for row in read_checksum_rows(self.ledger)}
+        self.assertIn(os.path.join("Scans", "letter.pdf"), paths)
+
+    def test_dry_run_records_nothing_and_rerun_adds_nothing_twice(self):
+        self.finalize("--dry-run")
+        self.assertFalse(os.path.exists(self.ledger))
+        self.finalize("--commit")
+        before = read_checksum_rows(self.ledger)
+        self.finalize("--commit")
+        self.assertEqual(read_checksum_rows(self.ledger), before)
+
+
 if __name__ == "__main__":
     unittest.main()
