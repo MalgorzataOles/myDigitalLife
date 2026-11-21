@@ -22,6 +22,8 @@ from scripts.common import (
     find_unregistered_files,
     check_folder_layout,
     folders_that_become_empty,
+    load_configuration,
+    run_log,
 )
 
 
@@ -567,6 +569,47 @@ class TestEditedFilesAreRecorded(WorkflowTestCase):
         before = read_checksum_rows(self.ledger)
         self.finalize("--commit")
         self.assertEqual(read_checksum_rows(self.ledger), before)
+
+
+class TestNonAsciiNames(WorkflowTestCase):
+    NAME = "Małgorzata Oleś"
+
+    def test_name_with_polish_letters_is_stored_and_logged_correctly(self):
+        self.config["user_name"] = self.NAME
+        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+        self.register()
+        self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
+        self.finalize("--commit")
+
+        self.assertEqual(read_checksum_rows(self.ledger)[0][3], self.NAME)
+
+        logs = os.listdir(os.path.join(self.test_dir, "Logs"))
+        self.assertTrue(all("Małgorzata_Oleś" in name for name in logs), logs)
+        for name in logs:
+            with open(os.path.join(self.test_dir, "Logs", name), encoding="utf-8") as f:
+                self.assertIn(f"# user      : {self.NAME}", f.read())
+
+    def test_registry_keeps_the_name_of_whoever_registered(self):
+        self.config["user_name"] = self.NAME
+        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+        self.register()
+        self.assertEqual(read_checksum_rows(self.registry)[0][3], self.NAME)
+
+    def test_config_file_with_polish_letters_is_read_correctly(self):
+        config_file = os.path.join(self.test_dir, "config.json")
+        with open(config_file, "w", encoding="utf-8") as f:
+            f.write('{"user_name": "Małgorzata Oleś"}')
+        with patch("scripts.common.CONFIG_FILE_PATH", config_file):
+            self.assertEqual(load_configuration()["user_name"], self.NAME)
+
+    def test_a_terminal_that_cannot_show_a_letter_does_not_crash_the_run(self):
+        ascii_terminal = io.TextIOWrapper(io.BytesIO(), encoding="ascii")
+        with patch.object(sys, "stdout", ascii_terminal):
+            with run_log(os.path.join(self.test_dir, "Logs"), "x.py", self.NAME, []):
+                print("Phone1/Zdjęcia/Łódź.jpg")
+        logs = os.listdir(os.path.join(self.test_dir, "Logs"))
+        with open(os.path.join(self.test_dir, "Logs", logs[0]), encoding="utf-8") as f:
+            self.assertIn("Phone1/Zdjęcia/Łódź.jpg", f.read())
 
 
 if __name__ == "__main__":

@@ -60,7 +60,7 @@ def load_configuration() -> dict:
         print(f"❌ Initialization Error: Configuration missing at: '{CONFIG_FILE_PATH}'")
         sys.exit(1)
     try:
-        with open(CONFIG_FILE_PATH, "r") as f:
+        with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError as e:
         print(f"❌ Syntax Error in config.json: {e}")
@@ -145,7 +145,8 @@ def run_log(log_path: str, script_name: str, user_name: str, args: list):
     goes unlogged.
     """
     started = datetime.now()
-    safe_user = re.sub(r"[^A-Za-z0-9._-]", "_", user_name)
+    # Keep letters of any language (ł, ś, ü ...); only characters that are unsafe in file names become "_"
+    safe_user = re.sub(r"[^\w.-]", "_", unicodedata.normalize("NFC", user_name))
     base_name = f"{started.strftime(TIMESTAMP_FORMAT)}_{os.path.splitext(script_name)[0]}_{safe_user}"
 
     log_file, log_file_path = None, None
@@ -173,6 +174,13 @@ def run_log(log_path: str, script_name: str, user_name: str, args: list):
     log_file.flush()
 
     original_stdout, original_stderr = sys.stdout, sys.stderr
+    for stream in (original_stdout, original_stderr):
+        try:
+            # A terminal that cannot show a letter prints "?" instead of crashing the run;
+            # the log file (UTF-8) keeps the real text.
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
     sys.stdout, sys.stderr = _Tee(original_stdout, log_file), _Tee(original_stderr, log_file)
     status = "finished normally"
     try:
