@@ -1,6 +1,6 @@
 # myDigitalLife
 
-myDigitalLife is a small, hash-based pipeline for safely curating family file backups (photos, videos, documents or anything else) across a Dropzone intake folder, a Workspace curation area, and an archive, on shared network storage. It's designed to be simple enough for several non-technical family members to follow the same workflow.
+myDigitalLife is a small, hash-based pipeline for safely curating family file backups (photos, videos, documents or anything else). It's designed to be simple enough for several non-technical family members to follow the same workflow.
 
 ## 📁 Repository & System Structure
 
@@ -9,8 +9,8 @@ myDigitalLife is a small, hash-based pipeline for safely curating family file ba
 ```{text}
 myDigitalLife/
   ├── .gitignore                    # Excludes config.json and *.sha256 tracking files
-  ├── config.json.template          # Template profile for required storage keys
-  ├── config.json                   # Local private paths, log folder and your name (git-ignored)
+  ├── config.json.template          # Template for user-specific path settings
+  ├── config.json                   # Local private paths settings (git-ignored)
   ├── scripts/
   │     ├── common.py               # Shared hashing/config helpers and file name constants
   │     ├── register_and_exclude.py
@@ -27,30 +27,28 @@ myDigitalLife/
 
 ```{text}
 /QNAP_Family_Vault/
-  ├── Dropzone/    # Intake for raw backups. Treated as immutable - never edited by hand.
-  │                # Contains only uploaded content, none of the scripts' own files.
-  ├── State/       # The scripts' own files (state_path in config.json), not for people to edit:
-  │                #   registered.sha256  - every Dropzone file already seen: hash, path, registration time, who registered it
-  │                #   exclude.sha256     - content already curated: hash, path, time, who finalized it
-  │                #   .pipeline.lock     - exists only while a run is in progress
+  ├── Dropzone/    # Raw backup intake never edited by hand.
+  │                # Contains only uploaded content.
+  ├── State/       # Script-owned, do not edit:
+  │                #   registered.sha256  - every file seen in Dropzone
+  │                #   exclude.sha256     - every file already curated
+  │                #   .pipeline.lock     - present only during a run
   ├── Logs/        # One log file per script run, shared by everyone (see "Run logs" below)
-  └── Excluded/    # Archive. Nothing here is ever read back automatically.
-        ├── registration_YYYYMMDD_hhmmss/  # duplicates caught on intake, one folder per run
-        └── curation_YYYYMMDD_hhmmss/     # originals archived once a curation session is done
+  └── Excluded/    # Archive; never read back.
+        ├── registration_YYYYMMDD_hhmmss/  # already-curated files caught at registration
+        └── curation_YYYYMMDD_hhmmss/     # Dropzone files archived at end of curation session
 ```
+`Workspace/` (where you curate) isn't in the layout above — it's session-scoped and can live anywhere. See below.
 
 ### Expected state of Dropzone
 
-Every new backup goes into its own `<source>/<date>` folder, for example `Dropzone/Phone1/2026-09-20/`. The scripts don't enforce this, but `finalize_curation.py` relies on it to report unregistered files by folder.
-
-Before `finalize_curation.py` runs, every file in Dropzone must be listed in `registered.sha256`, which means `register_and_exclude.py` has been run after the last dump. Otherwise `finalize_curation.py` aborts and names the `<source>/<date>` folders that still need registering.
-
-`Workspace/` (where you do the actual sorting) isn't part of the storage layout above because it's entirely session-scoped and lives wherever you like - see below.
+- Every new backup goes into its own `<source>/<date>` folder, for example `Dropzone/Phone1/2026-09-20/`.
+- Before `finalize_curation.py` runs, every file in Dropzone must be listed in `registered.sha256`, which means `register_and_exclude.py` has been run after the last dump. Otherwise `finalize_curation.py` aborts and names the `<source>/<date>` folders that still need registering.
 
 ## 🔄 Core Pipeline Workflow
 
 ```{text}
-Step 1: [Dropzone Intake] ──> register_and_exclude.py ──> known duplicates moved to
+Step 1: [Dropzone Intake] ──> register_and_exclude.py ──> known curated files moved to
                                      │                     Excluded/registration_.../
                                      ▼ (new files logged in registered.sha256)
 Step 2: [Manual Copy] ─────────> copy the batch you want to curate into
