@@ -107,6 +107,7 @@ Name the session folder `<YourName>_<YYYY-MM-DD>`, for example `Gosia_2026-09-25
 The two subfolders are:
 
 - **`Original/`** - an untouched copy of whatever you pulled from the upload folder for this session. Any internal structure is fine; hashing doesn't care about folder layout.
+  You can add more files to `Original/` at any time during the session, also remotely through Dropbox. A file you add later and want to keep must also be copied into `Sorted/`; otherwise it counts as dropped (it then shows up in `ToBeDeleted/` and in the "only in `Original/`" count).
 - **`Sorted/`** - your actual working copy. Reorganize, rename, move into categories, delete - whatever you want, as much as you want, as many times as you want.
 
 `finalize_curation.py` treats a file as "handled" if its hash shows up **anywhere in `Original/` OR `Sorted/`** - not just in `Sorted/`. This is deliberate: it's what lets you freely delete things from `Sorted/` mid-session (because you decided you don't want that file in your final layout) while the corresponding file in the upload folder still gets safely archived, since you did review it.
@@ -158,7 +159,7 @@ This is for a setup where the scripts run on a Mac or Linux computer with the QN
 **Rules for the sync jobs**
 - Conflict policy: keep both or rename, never overwrite or "newest wins".
 - Use the shortest sync interval the job allows. Two-way sync is not instant.
-- If HBS can exclude folders by name, exclude `Original/` from the workspace job: the untouched copy then exists only on the QNAP (nobody can edit it remotely) and Dropbox space is saved. Otherwise every batch takes about three times its size in Dropbox (the raw files, `Original/` and `Sorted/`).
+- Keep `Original/` in the workspace sync. People add files to `Original/` during curation, also from Dropbox when the QNAP can't be reached, so it must sync like `Sorted/`. The price is Dropbox space: every batch takes about three times its size (the files in the upload folder, `Original/` and `Sorted/`). Deleting the session folder after `--commit` frees it again.
 - Nothing in the state folder may ever be edited or deleted by hand, on any computer.
 
 **Rules for everyone using the scripts**
