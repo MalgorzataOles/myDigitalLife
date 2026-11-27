@@ -19,18 +19,18 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
     """
     Test suite for finalize_curation.py: it keeps no session state,
     hashes Original/ and Sorted/ fresh every run, and reconciles them
-    against the Dropzone registry and the shared exclude.sha256 ledger.
+    against the Upload registry and the shared exclude.sha256 ledger.
     """
 
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
-        self.dropzone_path = os.path.join(self.test_dir, "Dropzone")
+        self.upload_path = os.path.join(self.test_dir, "Upload")
         self.excluded_path = os.path.join(self.test_dir, "Excluded")
         self.session_path = os.path.join(self.test_dir, "Workspace", "Gosia_2026-09-25")
         self.original_path = os.path.join(self.session_path, "Original")
         self.sorted_path = os.path.join(self.session_path, "Sorted")
 
-        os.makedirs(self.dropzone_path, exist_ok=True)
+        os.makedirs(self.upload_path, exist_ok=True)
         os.makedirs(self.excluded_path, exist_ok=True)
         self.state_path = os.path.join(self.test_dir, "State")
         os.makedirs(self.state_path, exist_ok=True)
@@ -38,7 +38,7 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         os.makedirs(self.sorted_path, exist_ok=True)
 
         self.mock_config = {
-            "dropzone_path": self.dropzone_path,
+            "upload_path": self.upload_path,
             "excluded_path": self.excluded_path,
             "user_name": "Tester",
             "log_path": os.path.join(self.test_dir, "Logs"),
@@ -75,10 +75,10 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         self._write(os.path.join(self.sorted_path, "Family", "beach.jpg"), b"same_photo")
         self._write(os.path.join(self.sorted_path, "Beach", "beach.jpg"), b"same_photo")
 
-        dropzone_file = os.path.join(self.dropzone_path, "IMG_001.jpg")
-        self._write(dropzone_file, b"same_photo")
+        upload_file = os.path.join(self.upload_path, "IMG_001.jpg")
+        self._write(upload_file, b"same_photo")
         from scripts.common import calculate_sha256
-        file_hash = calculate_sha256(dropzone_file)
+        file_hash = calculate_sha256(upload_file)
         with open(self.registry_path, "w", encoding="utf-8") as f:
             f.write(f"{file_hash}\tIMG_001.jpg\n")
 
@@ -87,16 +87,16 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         self.assertEqual(cm.exception.code, 1)
 
         # Nothing should have moved or changed.
-        self.assertTrue(os.path.exists(dropzone_file))
+        self.assertTrue(os.path.exists(upload_file))
         registry_data = read_checksum_pairs(self.registry_path)
         self.assertEqual(len(registry_data), 1)
         self.assertFalse(os.path.exists(self.exclusion_path))
 
     def test_dry_run_does_not_modify_anything(self):
-        dropzone_file = os.path.join(self.dropzone_path, "IMG_002.jpg")
-        self._write(dropzone_file, b"vacation_photo")
+        upload_file = os.path.join(self.upload_path, "IMG_002.jpg")
+        self._write(upload_file, b"vacation_photo")
         from scripts.common import calculate_sha256
-        file_hash = calculate_sha256(dropzone_file)
+        file_hash = calculate_sha256(upload_file)
         with open(self.registry_path, "w", encoding="utf-8") as f:
             f.write(f"{file_hash}\tIMG_002.jpg\n")
 
@@ -105,16 +105,16 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
 
         self._run(commit=False)
 
-        self.assertTrue(os.path.exists(dropzone_file))
+        self.assertTrue(os.path.exists(upload_file))
         self.assertFalse(os.path.exists(self.exclusion_path))
         registry_data = read_checksum_pairs(self.registry_path)
         self.assertEqual(len(registry_data), 1)
 
     def test_commit_moves_matched_file_and_prefers_sorted_path_in_ledger(self):
-        dropzone_file = os.path.join(self.dropzone_path, "raw", "IMG_003.jpg")
-        self._write(dropzone_file, b"birthday_photo")
+        upload_file = os.path.join(self.upload_path, "raw", "IMG_003.jpg")
+        self._write(upload_file, b"birthday_photo")
         from scripts.common import calculate_sha256
-        file_hash = calculate_sha256(dropzone_file)
+        file_hash = calculate_sha256(upload_file)
         with open(self.registry_path, "w", encoding="utf-8") as f:
             f.write(f"{file_hash}\traw/IMG_003.jpg\n")
 
@@ -124,8 +124,8 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
 
         self._run(commit=True)
 
-        # Original Dropzone file is gone, archived under Excluded/curation_.../raw/IMG_003.jpg
-        self.assertFalse(os.path.exists(dropzone_file))
+        # Original Upload file is gone, archived under Excluded/curation_.../raw/IMG_003.jpg
+        self.assertFalse(os.path.exists(upload_file))
         curation_batches = [d for d in os.listdir(self.excluded_path) if d.startswith("curation_")]
         self.assertEqual(len(curation_batches), 1)
         archived_path = os.path.join(self.excluded_path, curation_batches[0], "raw", "IMG_003.jpg")
@@ -141,28 +141,28 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         self.assertEqual(exclusion_data[0], (file_hash, "Birthdays/2026.jpg"))
 
     def test_file_removed_from_original_is_not_treated_as_handled(self):
-        # File exists in Dropzone/registry but the user deleted it from Original
+        # File exists in Upload/registry but the user deleted it from Original
         # entirely (changed their mind before it ever reached Sorted) -> must
         # NOT be archived or excluded.
-        dropzone_file = os.path.join(self.dropzone_path, "IMG_004.jpg")
-        self._write(dropzone_file, b"unwanted_photo")
+        upload_file = os.path.join(self.upload_path, "IMG_004.jpg")
+        self._write(upload_file, b"unwanted_photo")
         from scripts.common import calculate_sha256
-        file_hash = calculate_sha256(dropzone_file)
+        file_hash = calculate_sha256(upload_file)
         with open(self.registry_path, "w", encoding="utf-8") as f:
             f.write(f"{file_hash}\tIMG_004.jpg\n")
 
         self._run(commit=True)
 
-        self.assertTrue(os.path.exists(dropzone_file))
+        self.assertTrue(os.path.exists(upload_file))
         registry_data = read_checksum_pairs(self.registry_path)
         self.assertEqual(len(registry_data), 1)
         self.assertFalse(os.path.exists(self.exclusion_path))
 
-    def test_multiple_dropzone_copies_of_same_hash_are_all_moved(self):
-        # Two identical files landed in Dropzone under different paths in the
+    def test_multiple_upload_copies_of_same_hash_are_all_moved(self):
+        # Two identical files landed in Upload under different paths in the
         # same intake batch (register_and_exclude.py registers every incoming copy).
-        first_copy = os.path.join(self.dropzone_path, "phone", "IMG_005.jpg")
-        second_copy = os.path.join(self.dropzone_path, "sdcard", "IMG_005.jpg")
+        first_copy = os.path.join(self.upload_path, "phone", "IMG_005.jpg")
+        second_copy = os.path.join(self.upload_path, "sdcard", "IMG_005.jpg")
         self._write(first_copy, b"duplicate_intake_photo")
         self._write(second_copy, b"duplicate_intake_photo")
         from scripts.common import calculate_sha256
@@ -182,11 +182,11 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         exclusion_data = read_checksum_pairs(self.exclusion_path)
         self.assertEqual(len(exclusion_data), 1, "Only one ledger entry, even though two files were archived.")
 
-    def test_duplicates_in_original_with_single_copy_in_sorted_archive_all_dropzone_copies(self):
-        # Two identical files landed in Dropzone, both were copied into Original/,
+    def test_duplicates_in_original_with_single_copy_in_sorted_archive_all_upload_copies(self):
+        # Two identical files landed in Upload, both were copied into Original/,
         # and only one of them was kept in Sorted/.
-        first_copy = os.path.join(self.dropzone_path, "phone", "IMG_006.jpg")
-        second_copy = os.path.join(self.dropzone_path, "sdcard", "IMG_006.jpg")
+        first_copy = os.path.join(self.upload_path, "phone", "IMG_006.jpg")
+        second_copy = os.path.join(self.upload_path, "sdcard", "IMG_006.jpg")
         self._write(first_copy, b"photo_copied_twice")
         self._write(second_copy, b"photo_copied_twice")
         from scripts.common import calculate_sha256
@@ -207,12 +207,12 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         exclusion_data = read_checksum_pairs(self.exclusion_path)
         self.assertEqual(exclusion_data, [(file_hash, "Kept/IMG_006.jpg")])
 
-    def test_aborts_when_dropzone_has_unregistered_files_without_changing_anything(self):
-        registered_file = os.path.join(self.dropzone_path, "IMG_007.jpg")
-        unregistered_file = os.path.join(self.dropzone_path, "new_dump", "IMG_008.jpg")
+    def test_aborts_when_upload_has_unregistered_files_without_changing_anything(self):
+        registered_file = os.path.join(self.upload_path, "IMG_007.jpg")
+        unregistered_file = os.path.join(self.upload_path, "new_dump", "IMG_008.jpg")
         self._write(registered_file, b"registered_photo")
         self._write(unregistered_file, b"not_yet_registered_photo")
-        self._write(os.path.join(self.dropzone_path, ".DS_Store"), b"ignored")
+        self._write(os.path.join(self.upload_path, ".DS_Store"), b"ignored")
         from scripts.common import calculate_sha256
         file_hash = calculate_sha256(registered_file)
         with open(self.registry_path, "w", encoding="utf-8") as f:
@@ -252,14 +252,14 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         files = {"one.jpg": b"first_photo", "two.jpg": b"second_photo"}
         with open(self.registry_path, "w", encoding="utf-8") as f:
             for name, content in files.items():
-                dropzone_file = os.path.join(self.dropzone_path, "Phone1", "2026-09-20", name)
-                self._write(dropzone_file, content)
+                upload_file = os.path.join(self.upload_path, "Phone1", "2026-09-20", name)
+                self._write(upload_file, content)
                 self._write(os.path.join(self.sorted_path, name), content)
-                f.write(f"{calculate_sha256(dropzone_file)}\tPhone1/2026-09-20/{name}\n")
+                f.write(f"{calculate_sha256(upload_file)}\tPhone1/2026-09-20/{name}\n")
 
     def _assert_fully_finalized(self):
         for name in ("one.jpg", "two.jpg"):
-            self.assertFalse(os.path.exists(os.path.join(self.dropzone_path, "Phone1", "2026-09-20", name)))
+            self.assertFalse(os.path.exists(os.path.join(self.upload_path, "Phone1", "2026-09-20", name)))
         self.assertEqual(len(read_checksum_pairs(self.registry_path)), 0)
         self.assertEqual(len(read_checksum_pairs(self.exclusion_path)), 2)
         archived = [
@@ -304,11 +304,11 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
 
     def test_remaining_registry_rows_keep_their_registration_timestamp(self):
         from scripts.common import calculate_sha256, read_checksum_rows
-        handled = os.path.join(self.dropzone_path, "Phone1", "handled.jpg")
-        kept = os.path.join(self.dropzone_path, "Phone1", "kept.jpg")
-        legacy = os.path.join(self.dropzone_path, "Phone1", "legacy.jpg")
+        handled = os.path.join(self.upload_path, "Phone1", "handled.jpg")
+        kept = os.path.join(self.upload_path, "Phone1", "kept.jpg")
+        legacy = os.path.join(self.upload_path, "Phone1", "legacy.jpg")
         self._write(handled, b"handled_photo")
-        self._write(kept, b"kept_in_dropzone")
+        self._write(kept, b"kept_in_upload")
         self._write(legacy, b"no_timestamp_row")
         with open(self.registry_path, "w", encoding="utf-8") as f:
             f.write(f"{calculate_sha256(handled)}\tPhone1/handled.jpg\t20260920_100000\n")
@@ -327,11 +327,11 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
     def test_running_without_dry_run_or_commit_changes_nothing_and_shows_both_options(self):
         import io
         from contextlib import redirect_stdout
-        dropzone_file = os.path.join(self.dropzone_path, "IMG_009.jpg")
-        self._write(dropzone_file, b"mode_test_photo")
+        upload_file = os.path.join(self.upload_path, "IMG_009.jpg")
+        self._write(upload_file, b"mode_test_photo")
         from scripts.common import calculate_sha256
         with open(self.registry_path, "w", encoding="utf-8") as f:
-            f.write(f"{calculate_sha256(dropzone_file)}\tIMG_009.jpg\n")
+            f.write(f"{calculate_sha256(upload_file)}\tIMG_009.jpg\n")
         self._write(os.path.join(self.sorted_path, "IMG_009.jpg"), b"mode_test_photo")
 
         output = io.StringIO()
@@ -343,7 +343,7 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         self.assertEqual(cm.exception.code, 1)
         self.assertIn("--dry-run", output.getvalue())
         self.assertIn("--commit", output.getvalue())
-        self.assertTrue(os.path.exists(dropzone_file))
+        self.assertTrue(os.path.exists(upload_file))
         self.assertFalse(os.path.exists(self.exclusion_path))
 
     def test_using_dry_run_and_commit_together_is_rejected(self):
@@ -361,9 +361,9 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
             self._run(commit=commit)
         return output.getvalue()
 
-    def test_original_files_unknown_to_dropzone_are_recorded_on_commit(self):
-        self._write(os.path.join(self.original_path, "from_elsewhere.jpg"), b"not from dropzone")
-        self._write(os.path.join(self.sorted_path, "Trips", "from_elsewhere.jpg"), b"not from dropzone")
+    def test_original_files_unknown_to_upload_are_recorded_on_commit(self):
+        self._write(os.path.join(self.original_path, "from_elsewhere.jpg"), b"not from upload")
+        self._write(os.path.join(self.sorted_path, "Trips", "from_elsewhere.jpg"), b"not from upload")
         from scripts.common import calculate_sha256
         expected_hash = calculate_sha256(os.path.join(self.original_path, "from_elsewhere.jpg"))
 
@@ -431,22 +431,22 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         self.assertIn("Expected one folder path but got 2", output)
         self.assertIn("quotes", output)
 
-    def test_summary_says_how_many_dropzone_files_are_moved(self):
+    def test_summary_says_how_many_upload_files_are_moved(self):
         for name in ("one.jpg", "two.jpg"):
-            dropzone_file = os.path.join(self.dropzone_path, "Phone1", "20260920", name)
-            self._write(dropzone_file, name.encode())
+            upload_file = os.path.join(self.upload_path, "Phone1", "20260920", name)
+            self._write(upload_file, name.encode())
             self._write(os.path.join(self.sorted_path, name), name.encode())
         from scripts.common import calculate_sha256
         with open(self.registry_path, "w", encoding="utf-8") as f:
             for name in ("one.jpg", "two.jpg"):
-                path = os.path.join(self.dropzone_path, "Phone1", "20260920", name)
+                path = os.path.join(self.upload_path, "Phone1", "20260920", name)
                 f.write(f"{calculate_sha256(path)}\tPhone1/20260920/{name}\n")
 
         dry_output = self._run_capturing_output(commit=False)
-        self.assertRegex(dry_output, r"Dropzone files to be moved to Excluded/\s*: 2")
+        self.assertRegex(dry_output, r"Files to be moved to the excluded folder\s*: 2")
 
         commit_output = self._run_capturing_output(commit=True)
-        self.assertRegex(commit_output, r"Dropzone files moved to Excluded/\s*: 2")
+        self.assertRegex(commit_output, r"Files moved to the excluded folder\s*: 2")
         self.assertNotIn("matched in this session", commit_output)
 
 

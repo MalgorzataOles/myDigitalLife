@@ -29,7 +29,7 @@ PREVIEW_DIRNAME = "ToBeDeleted"
 def main():
     if len(sys.argv) < 2:
         print("❌ Execution Error: Missing required session folder path argument.")
-        print("Usage: python3 scripts/preview_pending_removal.py /path/to/Workspace/Name_Date")
+        print("Usage: python3 scripts/preview_pending_removal.py /path/to/session_folder")
         sys.exit(1)
 
     config = load_configuration()
@@ -38,31 +38,31 @@ def main():
     state_path = get_state_path(config)
 
     with run_log(log_path, "preview_pending_removal.py", user_name, sys.argv[1:]):
-        run(sys.argv[1], config.get("dropzone_path"), state_path)
+        run(sys.argv[1], config.get("upload_path"), state_path)
 
 
-def print_registration_status(dropzone_path, state_path):
-    """finalize_curation.py refuses to run while Dropzone holds unregistered files, so say so here."""
-    if not dropzone_path or not os.path.isdir(dropzone_path):
-        print(f" ⚠️  Dropzone could not be checked: '{dropzone_path}' is not reachable.")
+def print_registration_status(upload_path, state_path):
+    """finalize_curation.py refuses to run while the upload folder holds unregistered files, so say so here."""
+    if not upload_path or not os.path.isdir(upload_path):
+        print(f" ⚠️  The upload folder could not be checked: '{upload_path}' is not reachable.")
         print("=" * 70)
         return
     registry_path = os.path.join(state_path, REGISTRY_FILENAME)
     unregistered = find_unregistered_files(
-        dropzone_path, load_checksum_list(registry_path, is_local_registry=True)
+        upload_path, load_checksum_list(registry_path, is_local_registry=True)
     )
     if not unregistered:
-        print(" Dropzone: all files are registered.")
+        print(" Upload folder: all files are registered.")
         print("=" * 70)
         return
-    print(f" ⚠️  Dropzone: {len(unregistered)} file(s) are not registered yet:")
+    print(f" ⚠️  Upload folder: {len(unregistered)} file(s) are not registered yet:")
     for line in describe_folder_counts(unregistered):
         print(f"     - {line}")
     print("     Run register_and_exclude.py before finalize_curation.py, which stops otherwise.")
     print("=" * 70)
 
 
-def run(session_path, dropzone_path, state_path):
+def run(session_path, upload_path, state_path):
     original_path = os.path.join(session_path, ORIGINAL_DIRNAME)
     sorted_path = os.path.join(session_path, SORTED_DIRNAME)
     preview_path = os.path.join(session_path, PREVIEW_DIRNAME)
@@ -121,7 +121,7 @@ def run(session_path, dropzone_path, state_path):
         print("  before running finalize_curation.py.")
         print("─" * 70)
     print("=" * 70)
-    print_registration_status(dropzone_path, state_path)
+    print_registration_status(upload_path, state_path)
     if unreadable:
         print(f" ⚠️  {len(unreadable)} file(s) could not be read and are NOT part of this preview:")
         for rel_path in sorted(unreadable):

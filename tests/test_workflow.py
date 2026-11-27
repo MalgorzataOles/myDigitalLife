@@ -30,15 +30,15 @@ from scripts.common import (
 class WorkflowTestCase(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
-        self.dropzone = os.path.join(self.test_dir, "Dropzone")
+        self.upload = os.path.join(self.test_dir, "Upload")
         self.excluded = os.path.join(self.test_dir, "Excluded")
         self.session = os.path.join(self.test_dir, "Workspace", "Gosia_20260925")
-        os.makedirs(self.dropzone)
+        os.makedirs(self.upload)
         self.state = os.path.join(self.test_dir, "State")
         os.makedirs(self.state)
         os.makedirs(os.path.join(self.session, "Original"))
         os.makedirs(os.path.join(self.session, "Sorted"))
-        self.config = {"dropzone_path": self.dropzone, "excluded_path": self.excluded, "user_name": "Tester",
+        self.config = {"upload_path": self.upload, "excluded_path": self.excluded, "user_name": "Tester",
                        "log_path": os.path.join(self.test_dir, "Logs"),
                        "state_path": self.state}
         self.registry = os.path.join(self.state, "registered.sha256")
@@ -74,8 +74,8 @@ class WorkflowTestCase(unittest.TestCase):
 class TestFullWorkflow(WorkflowTestCase):
     def test_complete_workflow_from_dump_to_archive_and_redump(self):
         # 1. A backup is dumped and registered.
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"photo a")
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "b.jpg"), b"photo b")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "a.jpg"), b"photo a")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "b.jpg"), b"photo b")
         self.register()
         self.assertEqual(len(read_checksum_rows(self.registry)), 2)
 
@@ -84,58 +84,58 @@ class TestFullWorkflow(WorkflowTestCase):
             self.write(os.path.join(self.session, "Original", name), b"photo " + name[0].encode())
         self.write(os.path.join(self.session, "Sorted", "Holiday", "a.jpg"), b"photo a")
 
-        # 4. Preview shows b.jpg and changes nothing in Dropzone.
+        # 4. Preview shows b.jpg and changes nothing in Upload.
         self.run_script(preview_pending_removal, self.session)
         self.assertTrue(os.path.exists(os.path.join(self.session, "ToBeDeleted", "b.jpg")))
 
         # 5. A dry run changes nothing.
         self.finalize("--dry-run")
         self.assertEqual(len(read_checksum_rows(self.registry)), 2)
-        self.assertTrue(os.path.exists(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg")))
+        self.assertTrue(os.path.exists(os.path.join(self.upload, "Phone1", "20260920", "a.jpg")))
 
         # 6. The real run archives both files and records both hashes.
         self.finalize("--commit")
         self.assertEqual(len(read_checksum_rows(self.registry)), 0)
         self.assertEqual(len(read_checksum_pairs(self.ledger)), 2)
-        self.assertFalse(os.path.exists(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg")))
+        self.assertFalse(os.path.exists(os.path.join(self.upload, "Phone1", "20260920", "a.jpg")))
 
         # 7. Running it again is harmless.
         self.finalize("--commit")
         self.assertEqual(len(read_checksum_pairs(self.ledger)), 2)
 
         # 8. The same photo dumped again is caught on intake, a new one is registered.
-        self.write(os.path.join(self.dropzone, "Phone2", "20260930", "again.jpg"), b"photo a")
-        self.write(os.path.join(self.dropzone, "Phone2", "20260930", "new.jpg"), b"brand new")
+        self.write(os.path.join(self.upload, "Phone2", "20260930", "again.jpg"), b"photo a")
+        self.write(os.path.join(self.upload, "Phone2", "20260930", "new.jpg"), b"brand new")
         self.register()
-        self.assertFalse(os.path.exists(os.path.join(self.dropzone, "Phone2", "20260930", "again.jpg")))
+        self.assertFalse(os.path.exists(os.path.join(self.upload, "Phone2", "20260930", "again.jpg")))
         self.assertEqual([row[1] for row in read_checksum_rows(self.registry)],
                          [os.path.join("Phone2", "20260930", "new.jpg")])
 
 
 class TestRegisterRobustness(WorkflowTestCase):
-    def test_excluded_folder_inside_dropzone_is_refused(self):
-        self.config["excluded_path"] = os.path.join(self.dropzone, "Excluded")
+    def test_excluded_folder_inside_upload_is_refused(self):
+        self.config["excluded_path"] = os.path.join(self.upload, "Excluded")
         with self.assertRaises(SystemExit) as cm:
             self.register()
         self.assertEqual(cm.exception.code, 1)
 
     def test_names_with_tabs_are_reported_and_not_registered(self):
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "bad\tname.jpg"), b"x")
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "good.jpg"), b"y")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "bad\tname.jpg"), b"x")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "good.jpg"), b"y")
         output = self.register()
         self.assertIn("name contains a tab or line break", output)
         self.assertEqual([os.path.basename(r[1]) for r in read_checksum_rows(self.registry)], ["good.jpg"])
 
     def test_windows_metadata_files_are_ignored(self):
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "Thumbs.db"), b"x")
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "desktop.ini"), b"x")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "Thumbs.db"), b"x")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "desktop.ini"), b"x")
         self.register()
         self.assertFalse(os.path.exists(self.registry))
 
     def test_interrupted_registry_write_leaves_registry_intact_and_rerun_works(self):
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "a.jpg"), b"a")
         self.register()
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "b.jpg"), b"b")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "b.jpg"), b"b")
 
         with patch("scripts.common.os.replace", side_effect=KeyboardInterrupt()):
             with self.assertRaises(KeyboardInterrupt):
@@ -146,7 +146,7 @@ class TestRegisterRobustness(WorkflowTestCase):
         self.assertEqual(len(read_checksum_rows(self.registry)), 2)
 
     def test_registry_with_a_cut_off_row_from_an_older_run_still_registers_the_real_file(self):
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "a.jpg"), b"a")
         with open(self.registry, "w", encoding="utf-8") as f:
             f.write("abc123\tPhone1/20260920/a.j")  # cut off mid-row, no newline
         self.register()
@@ -156,8 +156,8 @@ class TestRegisterRobustness(WorkflowTestCase):
     def test_accented_names_match_whichever_unicode_form_is_stored(self):
         composed = unicodedata.normalize("NFC", "Müller.jpg")
         decomposed = unicodedata.normalize("NFD", "Müller.jpg")
-        self.write(os.path.join(self.dropzone, "Phone1", decomposed), b"x")
-        self.assertEqual(find_unregistered_files(self.dropzone, {os.path.join("Phone1", composed)}), [])
+        self.write(os.path.join(self.upload, "Phone1", decomposed), b"x")
+        self.assertEqual(find_unregistered_files(self.upload, {os.path.join("Phone1", composed)}), [])
 
 
 class TestLedgerAppend(WorkflowTestCase):
@@ -171,7 +171,7 @@ class TestLedgerAppend(WorkflowTestCase):
 
 class TestFinalizeRobustness(WorkflowTestCase):
     def _register_one_handled_file(self):
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "a.jpg"), b"a")
         self.register()
         self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
 
@@ -189,9 +189,9 @@ class TestFinalizeRobustness(WorkflowTestCase):
         self.assertEqual(len(read_checksum_rows(self.registry)), 1)
         self.assertFalse(os.path.exists(self.ledger))
 
-    def test_session_folder_inside_dropzone_is_refused(self):
+    def test_session_folder_inside_upload_is_refused(self):
         self._register_one_handled_file()
-        self.session = os.path.join(self.dropzone, "Workspace", "Gosia_20260925")
+        self.session = os.path.join(self.upload, "Workspace", "Gosia_20260925")
         os.makedirs(os.path.join(self.session, "Original"))
         os.makedirs(os.path.join(self.session, "Sorted"))
         with self.assertRaises(SystemExit) as cm:
@@ -213,16 +213,16 @@ class TestFinalizeRobustness(WorkflowTestCase):
 
 class TestFolderLayout(unittest.TestCase):
     def test_overlapping_folders_are_detected(self):
-        self.assertIsNotNone(check_folder_layout("/a/Dropzone", "/a/Dropzone/Excluded"))
-        self.assertIsNotNone(check_folder_layout("/a/Dropzone/x", "/a/Dropzone"))
-        self.assertIsNotNone(check_folder_layout("/a/Dropzone", "/a/Excluded", "/a/Dropzone/Workspace/s"))
-        self.assertIsNone(check_folder_layout("/a/Dropzone", "/a/Excluded", "/a/Workspace/s"))
+        self.assertIsNotNone(check_folder_layout("/a/Upload", "/a/Upload/Excluded"))
+        self.assertIsNotNone(check_folder_layout("/a/Upload/x", "/a/Upload"))
+        self.assertIsNotNone(check_folder_layout("/a/Upload", "/a/Excluded", "/a/Upload/Workspace/s"))
+        self.assertIsNone(check_folder_layout("/a/Upload", "/a/Excluded", "/a/Workspace/s"))
 
 
 class TestUserName(WorkflowTestCase):
     def setUp(self):
         super().setUp()
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "a.jpg"), b"a")
 
     def assert_both_scripts_refuse(self):
         for run in (self.register, lambda: self.finalize("--dry-run")):
@@ -267,7 +267,7 @@ class TestRunLog(WorkflowTestCase):
     def setUp(self):
         super().setUp()
         self.logs = os.path.join(self.test_dir, "Logs")
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "a.jpg"), b"a")
 
     def only_log(self) -> str:
         names = os.listdir(self.logs)
@@ -336,8 +336,8 @@ class TestRunLog(WorkflowTestCase):
                 self.assertIn("log_path", self.last_output)
                 self.assertFalse(os.path.exists(self.registry))
 
-    def test_log_folder_inside_dropzone_is_refused(self):
-        self.config["log_path"] = os.path.join(self.dropzone, "Logs")
+    def test_log_folder_inside_upload_is_refused(self):
+        self.config["log_path"] = os.path.join(self.upload, "Logs")
         with self.assertRaises(SystemExit):
             self.register()
         self.assertFalse(os.path.exists(self.registry))
@@ -353,7 +353,7 @@ class TestRunLog(WorkflowTestCase):
 
 class TestEmptyFolderCleanup(WorkflowTestCase):
     def day(self, source="Phone1", date="20260920"):
-        return os.path.join(self.dropzone, source, date)
+        return os.path.join(self.upload, source, date)
 
     def test_emptied_date_folder_is_removed_but_the_source_folder_stays(self):
         self.write(os.path.join(self.day(), "a.jpg"), b"a")
@@ -361,7 +361,7 @@ class TestEmptyFolderCleanup(WorkflowTestCase):
         self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
         output = self.finalize("--commit")
         self.assertFalse(os.path.exists(self.day()))
-        self.assertTrue(os.path.isdir(os.path.join(self.dropzone, "Phone1")))
+        self.assertTrue(os.path.isdir(os.path.join(self.upload, "Phone1")))
         self.assertIn("REMOVED", output)
 
     def test_dry_run_lists_the_folders_but_removes_nothing(self):
@@ -396,7 +396,7 @@ class TestEmptyFolderCleanup(WorkflowTestCase):
         self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
         self.finalize("--commit")
         self.assertFalse(os.path.exists(self.day()))
-        self.assertTrue(os.path.isdir(os.path.join(self.dropzone, "Phone1")))
+        self.assertTrue(os.path.isdir(os.path.join(self.upload, "Phone1")))
 
     def test_an_unrelated_empty_folder_is_left_alone(self):
         os.makedirs(self.day("Phone2", "20261001"))  # someone just created it, nothing moved from it
@@ -414,7 +414,7 @@ class TestEmptyFolderCleanup(WorkflowTestCase):
         self.write(os.path.join(self.day("Phone2", "20261001"), "again.jpg"), b"a")
         output = self.register()
         self.assertFalse(os.path.exists(self.day("Phone2", "20261001")))
-        self.assertTrue(os.path.isdir(os.path.join(self.dropzone, "Phone2")))
+        self.assertTrue(os.path.isdir(os.path.join(self.upload, "Phone2")))
         self.assertIn("Empty folders removed", output)
 
     def test_rerun_after_interruption_before_the_cleanup_still_cleans_up(self):
@@ -430,20 +430,20 @@ class TestEmptyFolderCleanup(WorkflowTestCase):
         self.assertEqual(len(read_checksum_rows(self.registry)), 0)
 
     def test_files_directly_in_the_source_folder_never_remove_it(self):
-        self.assertEqual(folders_that_become_empty(self.dropzone, ["Phone1/a.jpg", "b.jpg"]), [])
+        self.assertEqual(folders_that_become_empty(self.upload, ["Phone1/a.jpg", "b.jpg"]), [])
 
 
 class TestStateFolder(WorkflowTestCase):
     def setUp(self):
         super().setUp()
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "a.jpg"), b"a")
 
-    def test_registry_ledger_and_lock_live_in_the_state_folder_not_in_dropzone(self):
+    def test_registry_ledger_and_lock_live_in_the_state_folder_not_in_upload(self):
         self.register()
         self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
         self.finalize("--commit")
         self.assertEqual(sorted(os.listdir(self.state)), ["exclude.sha256", "registered.sha256"])
-        for name in os.listdir(self.dropzone):
+        for name in os.listdir(self.upload):
             self.assertNotIn(".sha256", name)
             self.assertNotEqual(name, ".pipeline.lock")
 
@@ -453,12 +453,12 @@ class TestStateFolder(WorkflowTestCase):
 
         def spy(*args, **kwargs):
             seen["lock_in_state"] = os.path.isdir(os.path.join(self.state, ".pipeline.lock"))
-            seen["lock_in_dropzone"] = os.path.exists(os.path.join(self.dropzone, ".pipeline.lock"))
+            seen["lock_in_upload"] = os.path.exists(os.path.join(self.upload, ".pipeline.lock"))
             return original_process(*args, **kwargs)
 
         with patch.object(register_and_exclude, "process", side_effect=spy):
             self.register()
-        self.assertEqual(seen, {"lock_in_state": True, "lock_in_dropzone": False})
+        self.assertEqual(seen, {"lock_in_state": True, "lock_in_upload": False})
         self.assertFalse(os.path.exists(os.path.join(self.state, ".pipeline.lock")))
 
     def test_state_folder_is_created_when_missing(self):
@@ -479,19 +479,19 @@ class TestStateFolder(WorkflowTestCase):
                     self.assertEqual(cm.exception.code, 1)
                     self.assertIn("state_path", self.last_output)
 
-    def test_state_folder_inside_dropzone_is_refused(self):
-        self.config["state_path"] = os.path.join(self.dropzone, "State")
+    def test_state_folder_inside_upload_is_refused(self):
+        self.config["state_path"] = os.path.join(self.upload, "State")
         with self.assertRaises(SystemExit):
             self.register()
-        self.assertFalse(os.path.exists(os.path.join(self.dropzone, "State")))
+        self.assertFalse(os.path.exists(os.path.join(self.upload, "State")))
 
-    def test_old_registry_or_ledger_still_in_dropzone_stops_the_run_with_instructions(self):
-        self.write(os.path.join(self.dropzone, "registered.sha256"), b"abc\tx\n")
+    def test_old_registry_or_ledger_still_in_upload_stops_the_run_with_instructions(self):
+        self.write(os.path.join(self.upload, "registered.sha256"), b"abc\tx\n")
         for run in (self.register, lambda: self.finalize("--dry-run")):
             with self.assertRaises(SystemExit) as cm:
                 run()
             self.assertEqual(cm.exception.code, 1)
-            self.assertIn("registered.sha256 found inside the Dropzone", self.last_output)
+            self.assertIn("registered.sha256 found inside the upload folder", self.last_output)
             self.assertIn("Move them there", self.last_output)
         self.assertFalse(os.path.exists(self.registry))
 
@@ -499,7 +499,7 @@ class TestStateFolder(WorkflowTestCase):
 class TestSyncConflicts(WorkflowTestCase):
     def setUp(self):
         super().setUp()
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "a.jpg"), b"a")
         self.register()
         self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
 
@@ -538,7 +538,7 @@ class TestSyncConflicts(WorkflowTestCase):
 class TestEditedFilesAreRecorded(WorkflowTestCase):
     def setUp(self):
         super().setUp()
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"original a")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "a.jpg"), b"original a")
         self.register()
         self.write(os.path.join(self.session, "Original", "a.jpg"), b"original a")
         self.write(os.path.join(self.session, "Sorted", "Holiday", "a.jpg"), b"rotated a")
@@ -550,10 +550,10 @@ class TestEditedFilesAreRecorded(WorkflowTestCase):
         self.finalize("--commit")
         self.assertEqual(len(self.ledger_hashes()), 2, "the original content and the edited content")
 
-        self.write(os.path.join(self.dropzone, "Phone2", "20261001", "rotated_again.jpg"), b"rotated a")
-        self.write(os.path.join(self.dropzone, "Phone2", "20261001", "new.jpg"), b"unrelated")
+        self.write(os.path.join(self.upload, "Phone2", "20261001", "rotated_again.jpg"), b"rotated a")
+        self.write(os.path.join(self.upload, "Phone2", "20261001", "new.jpg"), b"unrelated")
         self.register()
-        self.assertFalse(os.path.exists(os.path.join(self.dropzone, "Phone2", "20261001", "rotated_again.jpg")))
+        self.assertFalse(os.path.exists(os.path.join(self.upload, "Phone2", "20261001", "rotated_again.jpg")))
         self.assertEqual([os.path.basename(r[1]) for r in read_checksum_rows(self.registry)], ["new.jpg"])
 
     def test_a_file_added_straight_to_sorted_is_recorded_with_its_sorted_path(self):
@@ -576,7 +576,7 @@ class TestNonAsciiNames(WorkflowTestCase):
 
     def test_name_with_polish_letters_is_stored_and_logged_correctly(self):
         self.config["user_name"] = self.NAME
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "a.jpg"), b"a")
         self.register()
         self.write(os.path.join(self.session, "Sorted", "a.jpg"), b"a")
         self.finalize("--commit")
@@ -591,7 +591,7 @@ class TestNonAsciiNames(WorkflowTestCase):
 
     def test_registry_keeps_the_name_of_whoever_registered(self):
         self.config["user_name"] = self.NAME
-        self.write(os.path.join(self.dropzone, "Phone1", "20260920", "a.jpg"), b"a")
+        self.write(os.path.join(self.upload, "Phone1", "20260920", "a.jpg"), b"a")
         self.register()
         self.assertEqual(read_checksum_rows(self.registry)[0][3], self.NAME)
 
@@ -610,6 +610,31 @@ class TestNonAsciiNames(WorkflowTestCase):
         logs = os.listdir(os.path.join(self.test_dir, "Logs"))
         with open(os.path.join(self.test_dir, "Logs", logs[0]), encoding="utf-8") as f:
             self.assertIn("Phone1/Zdjęcia/Łódź.jpg", f.read())
+
+
+class TestConfigKeys(WorkflowTestCase):
+    def load(self, content):
+        config_file = os.path.join(self.test_dir, "config.json")
+        with open(config_file, "w", encoding="utf-8") as f:
+            f.write(content)
+        output = io.StringIO()
+        with patch("scripts.common.CONFIG_FILE_PATH", config_file):
+            with redirect_stdout(output):
+                try:
+                    return load_configuration(), output.getvalue()
+                except SystemExit as exit_info:
+                    self.assertEqual(exit_info.code, 1)
+                    return None, output.getvalue()
+
+    def test_old_dropzone_path_key_stops_with_the_new_name_in_the_message(self):
+        config, output = self.load('{"dropzone_path": "/x", "excluded_path": "/y"}')
+        self.assertIsNone(config)
+        self.assertIn("dropzone_path", output)
+        self.assertIn("upload_path", output)
+
+    def test_upload_path_key_is_accepted(self):
+        config, _ = self.load('{"upload_path": "/x"}')
+        self.assertEqual(config["upload_path"], "/x")
 
 
 if __name__ == "__main__":

@@ -29,11 +29,11 @@ def dead_process_id() -> int:
 
 class TestPipelineLock(unittest.TestCase):
     def setUp(self):
-        self.dropzone = tempfile.mkdtemp()
-        self.lock_path = os.path.join(self.dropzone, LOCK_DIRNAME)
+        self.upload = tempfile.mkdtemp()
+        self.lock_path = os.path.join(self.upload, LOCK_DIRNAME)
 
     def tearDown(self):
-        shutil.rmtree(self.dropzone)
+        shutil.rmtree(self.upload)
 
     def make_lock(self, **owner):
         os.mkdir(self.lock_path)
@@ -43,12 +43,12 @@ class TestPipelineLock(unittest.TestCase):
     def acquire(self):
         output = io.StringIO()
         with redirect_stdout(output):
-            with pipeline_lock(self.dropzone, "test.py"):
+            with pipeline_lock(self.upload, "test.py"):
                 pass
         return output.getvalue()
 
     def test_lock_exists_only_while_held(self):
-        with pipeline_lock(self.dropzone, "test.py"):
+        with pipeline_lock(self.upload, "test.py"):
             self.assertTrue(os.path.isdir(self.lock_path))
         self.assertFalse(os.path.exists(self.lock_path))
 
@@ -58,7 +58,7 @@ class TestPipelineLock(unittest.TestCase):
         output = io.StringIO()
         with redirect_stdout(output):
             with self.assertRaises(SystemExit) as cm:
-                with pipeline_lock(self.dropzone, "test.py"):
+                with pipeline_lock(self.upload, "test.py"):
                     self.fail("the lock must not be granted")
         self.assertEqual(cm.exception.code, 1)
         self.assertIn("anna", output.getvalue())
@@ -67,19 +67,19 @@ class TestPipelineLock(unittest.TestCase):
 
     def test_lock_is_released_after_an_error(self):
         with self.assertRaises(RuntimeError):
-            with pipeline_lock(self.dropzone, "test.py"):
+            with pipeline_lock(self.upload, "test.py"):
                 raise RuntimeError("boom")
         self.assertFalse(os.path.exists(self.lock_path))
 
     def test_lock_is_released_after_ctrl_c(self):
         with self.assertRaises(KeyboardInterrupt):
-            with pipeline_lock(self.dropzone, "test.py"):
+            with pipeline_lock(self.upload, "test.py"):
                 raise KeyboardInterrupt()
         self.assertFalse(os.path.exists(self.lock_path))
 
     def test_lock_is_released_when_the_process_is_terminated(self):
         with self.assertRaises(SystemExit):
-            with pipeline_lock(self.dropzone, "test.py"):
+            with pipeline_lock(self.upload, "test.py"):
                 os.kill(os.getpid(), signal.SIGTERM)
         self.assertFalse(os.path.exists(self.lock_path))
 
@@ -95,7 +95,7 @@ class TestPipelineLock(unittest.TestCase):
                        pid=dead_process_id(), started="20260101_000000")
         with redirect_stdout(io.StringIO()):
             with self.assertRaises(SystemExit):
-                with pipeline_lock(self.dropzone, "test.py"):
+                with pipeline_lock(self.upload, "test.py"):
                     self.fail("the lock must not be granted")
         self.assertTrue(os.path.isdir(self.lock_path))
 
@@ -103,7 +103,7 @@ class TestPipelineLock(unittest.TestCase):
         os.mkdir(self.lock_path)
         with redirect_stdout(io.StringIO()):
             with self.assertRaises(SystemExit):
-                with pipeline_lock(self.dropzone, "test.py"):
+                with pipeline_lock(self.upload, "test.py"):
                     self.fail("the lock must not be granted")
         self.assertTrue(os.path.isdir(self.lock_path))
 
@@ -111,17 +111,17 @@ class TestPipelineLock(unittest.TestCase):
 class TestScriptsRespectTheLock(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
-        self.dropzone = os.path.join(self.test_dir, "Dropzone")
+        self.upload = os.path.join(self.test_dir, "Upload")
         self.excluded = os.path.join(self.test_dir, "Excluded")
         self.session = os.path.join(self.test_dir, "Workspace", "Gosia_20260925")
-        for folder in (self.dropzone, os.path.join(self.session, "Original"), os.path.join(self.session, "Sorted")):
+        for folder in (self.upload, os.path.join(self.session, "Original"), os.path.join(self.session, "Sorted")):
             os.makedirs(folder)
         self.state = os.path.join(self.test_dir, "State")
         os.makedirs(self.state)
-        self.config = {"dropzone_path": self.dropzone, "excluded_path": self.excluded, "user_name": "Tester",
+        self.config = {"upload_path": self.upload, "excluded_path": self.excluded, "user_name": "Tester",
                        "log_path": os.path.join(self.test_dir, "Logs"), "state_path": self.state}
         os.mkdir(os.path.join(self.state, LOCK_DIRNAME))
-        with open(os.path.join(self.dropzone, "a.jpg"), "wb") as f:
+        with open(os.path.join(self.upload, "a.jpg"), "wb") as f:
             f.write(b"a")
 
     def tearDown(self):

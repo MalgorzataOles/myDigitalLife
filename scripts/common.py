@@ -61,7 +61,12 @@ def load_configuration() -> dict:
         sys.exit(1)
     try:
         with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+            config = json.load(f)
+        if "dropzone_path" in config:
+            print("❌ Execution Halting: config.json still has the old key 'dropzone_path'.")
+            print(f"   Open {CONFIG_FILE_PATH} and rename it to \"upload_path\" (keep the folder path as it is).")
+            sys.exit(1)
+        return config
     except json.JSONDecodeError as e:
         print(f"❌ Syntax Error in config.json: {e}")
         sys.exit(1)
@@ -88,15 +93,15 @@ def get_state_path(config: dict) -> str:
     if not state_path or state_path == PLACEHOLDER_STATE_PATH:
         print("❌ Execution Halting: 'state_path' in config.json is missing or still the placeholder.")
         print(f"   Open {CONFIG_FILE_PATH} and set \"state_path\" to the folder for registered.sha256,")
-        print("   exclude.sha256 and the run lock (it must not be inside the Dropzone).")
+        print("   exclude.sha256 and the run lock (it must not be inside the upload folder).")
         sys.exit(1)
     return state_path
 
 
-def legacy_state_files_in_dropzone(dropzone_path: str) -> list:
-    """Names of registry/ledger files still lying in the Dropzone from before they moved to state_path."""
+def legacy_state_files_in_upload(upload_path: str) -> list:
+    """Names of registry/ledger files still lying in the upload folder from before they moved to state_path."""
     return [name for name in (REGISTRY_FILENAME, EXCLUDE_FILENAME, REGISTRY_FILENAME + ".tmp")
-            if os.path.exists(os.path.join(dropzone_path, name))]
+            if os.path.exists(os.path.join(upload_path, name))]
 
 
 def get_log_path(config: dict) -> str:
@@ -284,7 +289,12 @@ def has_unsupported_name(relative_path: str) -> bool:
     return any(char in relative_path for char in ("\t", "\n", "\r"))
 
 
-def check_folder_layout(dropzone_path: str, excluded_path: str, session_path: str = None,
+def folder_label(path: str) -> str:
+    """The folder's own name, taken from the configured path, for messages that show paths."""
+    return os.path.basename(os.path.normpath(path))
+
+
+def check_folder_layout(upload_path: str, excluded_path: str, session_path: str = None,
                         log_path: str = None, state_path: str = None):
     """
     Returns an error message if the folders overlap in a way that would make the
@@ -294,16 +304,16 @@ def check_folder_layout(dropzone_path: str, excluded_path: str, session_path: st
         child, parent = os.path.realpath(child), os.path.realpath(parent)
         return child == parent or os.path.commonpath([child, parent]) == parent
 
-    if is_inside(excluded_path, dropzone_path):
-        return "'excluded_path' must not be inside (or the same as) 'dropzone_path'."
-    if is_inside(dropzone_path, excluded_path):
-        return "'dropzone_path' must not be inside (or the same as) 'excluded_path'."
-    if session_path and is_inside(session_path, dropzone_path):
-        return "The session folder must not be inside the Dropzone."
-    if log_path and is_inside(log_path, dropzone_path):
-        return "'log_path' must not be inside the Dropzone."
-    if state_path and is_inside(state_path, dropzone_path):
-        return "'state_path' must not be inside the Dropzone."
+    if is_inside(excluded_path, upload_path):
+        return "'excluded_path' must not be inside (or the same as) 'upload_path'."
+    if is_inside(upload_path, excluded_path):
+        return "'upload_path' must not be inside (or the same as) 'excluded_path'."
+    if session_path and is_inside(session_path, upload_path):
+        return "The session folder must not be inside the upload folder."
+    if log_path and is_inside(log_path, upload_path):
+        return "'log_path' must not be inside the upload folder."
+    if state_path and is_inside(state_path, upload_path):
+        return "'state_path' must not be inside the upload folder."
     return None
 
 
@@ -347,8 +357,8 @@ def append_checksum_lines(file_path: str, lines: list) -> None:
         os.fsync(f.fileno())
 
 
-def is_ignored_dropzone_file(filename: str) -> bool:
-    """Files in Dropzone that are never registered: OS metadata."""
+def is_ignored_upload_file(filename: str) -> bool:
+    """Files in the upload folder that are never registered: OS metadata."""
     return is_ignored_file(filename)
 
 
@@ -383,7 +393,7 @@ def _lock_is_stale(owner: dict) -> bool:
 def pipeline_lock(state_path: str, script_name: str):
     """
     Holds an exclusive lock on the state folder (and with it on the registry,
-    the ledger and the Dropzone) for the duration of the with-block.
+    the ledger and the upload folder) for the duration of the with-block.
     Creating a folder is atomic, even on a network share, so only one run can
     succeed. The lock is released on normal exit, errors, Ctrl-C and when the
     terminal is closed. After a hard crash a stale lock may remain: one left by
@@ -404,7 +414,7 @@ def pipeline_lock(state_path: str, script_name: str):
                 continue
             who = (f"{owner.get('script', 'a script')}, started {owner.get('started', '?')} "
                    f"by {owner.get('user', '?')} on {owner.get('host', '?')}") if owner else "unknown (it may just be starting)"
-            print("❌ Execution Halting: another run is in progress on this Dropzone:")
+            print("❌ Execution Halting: another run is in progress:")
             print(f"   {who}")
             print("\n   Wait for it to finish, then run this again.")
             print(f"   If you are SURE that run crashed and nobody is running these scripts,")
@@ -436,29 +446,29 @@ def pipeline_lock(state_path: str, script_name: str):
         shutil.rmtree(lock_path, ignore_errors=True)
 
 
-def find_unregistered_files(dropzone_path: str, registered_paths: set) -> list:
-    """Returns the sorted Dropzone-relative paths of files not yet listed in the registry."""
+def find_unregistered_files(upload_path: str, registered_paths: set) -> list:
+    """Returns the sorted paths (relative to the upload folder) of files not yet listed in the registry."""
     unregistered = []
     known_paths = {normalize_path(path) for path in registered_paths}
-    for root, dirs, files in os.walk(dropzone_path):
+    for root, dirs, files in os.walk(upload_path):
         for file in files:
-            if is_ignored_dropzone_file(file):
+            if is_ignored_upload_file(file):
                 continue
-            relative_path = os.path.relpath(os.path.join(root, file), dropzone_path)
+            relative_path = os.path.relpath(os.path.join(root, file), upload_path)
             if normalize_path(relative_path) not in known_paths:
                 unregistered.append(relative_path)
     return sorted(unregistered)
 
 
-def folders_that_become_empty(dropzone_path: str, moved_relative_paths: list, keep_depth: int = 1) -> list:
+def folders_that_become_empty(upload_path: str, moved_relative_paths: list, keep_depth: int = 1) -> list:
     """
-    Returns the Dropzone-relative folders that are (or will be) empty once the given
+    Returns the folders (relative to the upload folder) that are (or will be) empty once the given
     files are gone, deepest first. Only the folders those files were in are considered.
     The top `keep_depth` levels (the <source> folder such as Phone1) are always kept,
-    and so is the Dropzone itself. Hidden OS files (.DS_Store, ._*, ...) don't count
+    and so is the upload folder itself. Hidden OS files (.DS_Store, ._*, ...) don't count
     as content.
     """
-    moved_full_paths = {os.path.join(dropzone_path, rel_path) for rel_path in moved_relative_paths}
+    moved_full_paths = {os.path.join(upload_path, rel_path) for rel_path in moved_relative_paths}
     candidates = set()
     for rel_path in moved_relative_paths:
         folder = os.path.dirname(rel_path)
@@ -470,7 +480,7 @@ def folders_that_become_empty(dropzone_path: str, moved_relative_paths: list, ke
 
     removable, result = set(), []
     for rel_folder in sorted(candidates, key=lambda path: path.count(os.sep), reverse=True):
-        folder = os.path.join(dropzone_path, rel_folder)
+        folder = os.path.join(upload_path, rel_folder)
         if not os.path.isdir(folder) or os.path.islink(folder):
             continue
         try:
@@ -488,11 +498,11 @@ def folders_that_become_empty(dropzone_path: str, moved_relative_paths: list, ke
     return result
 
 
-def remove_folders(dropzone_path: str, relative_folders: list) -> list:
+def remove_folders(upload_path: str, relative_folders: list) -> list:
     """Deletes the given (deepest first) folders, including leftover hidden OS files. Returns those removed."""
     removed = []
     for rel_folder in relative_folders:
-        folder = os.path.join(dropzone_path, rel_folder)
+        folder = os.path.join(upload_path, rel_folder)
         try:
             for entry in list(os.scandir(folder)):
                 if not entry.is_dir(follow_symlinks=False) and is_ignored_file(entry.name):
@@ -506,7 +516,7 @@ def remove_folders(dropzone_path: str, relative_folders: list) -> list:
 
 def group_by_source_folder(relative_paths: list, depth: int = 2) -> dict:
     """
-    Groups Dropzone-relative paths by their first `depth` folders (the expected
+    Groups paths (relative to the upload folder) by their first `depth` folders (the expected
     <source>/<date> layout) and returns {group_label: file_count}. A file with
     no parent folder is its own group, labelled by its file name.
     """

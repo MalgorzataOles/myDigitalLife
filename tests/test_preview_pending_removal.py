@@ -22,11 +22,11 @@ class TestPreviewPendingRemoval(unittest.TestCase):
 
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
-        self.dropzone_path = os.path.join(self.test_dir, "Dropzone")
+        self.upload_path = os.path.join(self.test_dir, "Upload")
         self.state_path = os.path.join(self.test_dir, "State")
-        os.makedirs(self.dropzone_path)
+        os.makedirs(self.upload_path)
         os.makedirs(self.state_path)
-        config = {"dropzone_path": self.dropzone_path,
+        config = {"upload_path": self.upload_path,
                   "excluded_path": os.path.join(self.test_dir, "Excluded"),
                   "user_name": "Tester",
                   "log_path": os.path.join(self.test_dir, "Logs"),
@@ -124,26 +124,26 @@ class TestPreviewPendingRemoval(unittest.TestCase):
                 main()
         return output.getvalue()
 
-    def test_says_when_all_dropzone_files_are_registered(self):
+    def test_says_when_all_upload_files_are_registered(self):
         from scripts.common import calculate_sha256
-        dropzone_file = os.path.join(self.dropzone_path, "Phone1", "20260920", "a.jpg")
-        self._write(dropzone_file, b"a")
+        upload_file = os.path.join(self.upload_path, "Phone1", "20260920", "a.jpg")
+        self._write(upload_file, b"a")
         with open(os.path.join(self.state_path, "registered.sha256"), "w", encoding="utf-8") as f:
-            f.write(f"{calculate_sha256(dropzone_file)}\t{os.path.join('Phone1', '20260920', 'a.jpg')}\n")
-        self.assertIn("Dropzone: all files are registered.", self._preview_output())
+            f.write(f"{calculate_sha256(upload_file)}\t{os.path.join('Phone1', '20260920', 'a.jpg')}\n")
+        self.assertIn("Upload folder: all files are registered.", self._preview_output())
 
-    def test_warns_about_unregistered_dropzone_files_grouped_by_folder(self):
-        self._write(os.path.join(self.dropzone_path, "Phone1", "20260921", "a.jpg"), b"a")
-        self._write(os.path.join(self.dropzone_path, "Phone1", "20260921", "b.jpg"), b"b")
+    def test_warns_about_unregistered_upload_files_grouped_by_folder(self):
+        self._write(os.path.join(self.upload_path, "Phone1", "20260921", "a.jpg"), b"a")
+        self._write(os.path.join(self.upload_path, "Phone1", "20260921", "b.jpg"), b"b")
         output = self._preview_output()
         self.assertIn("2 file(s) are not registered yet", output)
         self.assertIn("Phone1/20260921/  (2 files)", output)
         self.assertIn("register_and_exclude.py", output)
-        self.assertTrue(os.path.exists(os.path.join(self.dropzone_path, "Phone1", "20260921", "a.jpg")))
+        self.assertTrue(os.path.exists(os.path.join(self.upload_path, "Phone1", "20260921", "a.jpg")))
 
-    def test_says_when_dropzone_cannot_be_checked(self):
-        shutil.rmtree(self.dropzone_path)
-        self.assertIn("Dropzone could not be checked", self._preview_output())
+    def test_says_when_upload_cannot_be_checked(self):
+        shutil.rmtree(self.upload_path)
+        self.assertIn("The upload folder could not be checked", self._preview_output())
 
 
 if __name__ == "__main__":

@@ -21,11 +21,11 @@ from scripts.common import (
     get_user_name,
     get_log_path,
     get_state_path,
-    legacy_state_files_in_dropzone,
+    legacy_state_files_in_upload,
     run_log,
     pipeline_lock,
     LOCK_DIRNAME,
-    is_ignored_dropzone_file,
+    is_ignored_upload_file,
     describe_folder_counts,
     folders_that_become_empty,
     remove_folders,
@@ -46,26 +46,26 @@ def main():
 
 
 def run(config, user_name, state_path):
-    dropzone_path = config.get("dropzone_path")
+    upload_path = config.get("upload_path")
     excluded_root_dir = config.get("excluded_path")
 
-    if not dropzone_path or not os.path.exists(dropzone_path):
-        print(f"❌ Execution Halting: 'dropzone_path' is invalid or inaccessible:\n   '{dropzone_path}'")
+    if not upload_path or not os.path.exists(upload_path):
+        print(f"❌ Execution Halting: 'upload_path' is invalid or inaccessible:\n   '{upload_path}'")
         sys.exit(1)
 
     if not excluded_root_dir:
         print("❌ Execution Halting: 'excluded_path' configuration is completely missing from config.json.")
         sys.exit(1)
 
-    layout_problem = check_folder_layout(dropzone_path, excluded_root_dir,
+    layout_problem = check_folder_layout(upload_path, excluded_root_dir,
                                          log_path=config.get("log_path"), state_path=state_path)
     if layout_problem:
         print(f"❌ Execution Halting: {layout_problem}")
         sys.exit(1)
 
-    leftovers = legacy_state_files_in_dropzone(dropzone_path)
+    leftovers = legacy_state_files_in_upload(upload_path)
     if leftovers:
-        print(f"❌ Execution Halting: {' and '.join(leftovers)} found inside the Dropzone.")
+        print(f"❌ Execution Halting: {' and '.join(leftovers)} found inside the upload folder.")
         print(f"   These files now live in the state folder ({state_path}).")
         print("   Move them there by hand, then run this again. Nothing has been changed.")
         sys.exit(1)
@@ -77,10 +77,10 @@ def run(config, user_name, state_path):
         sys.exit(1)
 
     with pipeline_lock(state_path, "register_and_exclude.py"):
-        process(dropzone_path, excluded_root_dir, user_name, state_path)
+        process(upload_path, excluded_root_dir, user_name, state_path)
 
 
-def process(dropzone_path, excluded_root_dir, user_name, state_path):
+def process(upload_path, excluded_root_dir, user_name, state_path):
     registry_path = os.path.join(state_path, REGISTRY_FILENAME)
     exclusion_list_path = os.path.join(state_path, EXCLUDE_FILENAME)
 
@@ -90,7 +90,7 @@ def process(dropzone_path, excluded_root_dir, user_name, state_path):
         normalize_path(path) for path in load_checksum_list(registry_path, is_local_registry=True)
     }
 
-    # Dynamic creation of the timestamped isolation folder inside Excluded/
+    # Dynamic creation of the timestamped isolation folder inside the excluded folder
     run_started = datetime.now()
     timestamp = run_started.strftime(TIMESTAMP_FORMAT)
     registered_at = timestamp
@@ -100,7 +100,7 @@ def process(dropzone_path, excluded_root_dir, user_name, state_path):
     print("\n" + "~" * 60)
     print(" 📸 STARTING RUN: Checking for new files...")
     print("~" * 60)
-    print(f" Scanning folder   : {dropzone_path}")
+    print(f" Scanning folder   : {upload_path}")
     print(f" Registry file     : {registry_path}")
     if os.path.exists(exclusion_list_path) and len(exclusion_set) > 0:
         print(f" Exclusion file    : {exclusion_list_path}")
@@ -115,15 +115,15 @@ def process(dropzone_path, excluded_root_dir, user_name, state_path):
 
     print("🔎 Scanning files ...")
 
-    for root, dirs, files in os.walk(dropzone_path):
+    for root, dirs, files in os.walk(upload_path):
         dirs[:] = [d for d in dirs if d != LOCK_DIRNAME]
         for file in files:
             # Skip hidden metadata artifacts and the registry files themselves
-            if is_ignored_dropzone_file(file):
+            if is_ignored_upload_file(file):
                 continue
 
             full_path = os.path.join(root, file)
-            relative_path = os.path.relpath(full_path, dropzone_path)
+            relative_path = os.path.relpath(full_path, upload_path)
 
             # Case A: Already logged locally, skip configuration check
             if normalize_path(relative_path) in registered_paths:
@@ -144,17 +144,17 @@ def process(dropzone_path, excluded_root_dir, user_name, state_path):
             if file_hash in exclusion_set:
                 excluded_files_log.append((full_path, relative_path))
             else:
-                # Case D: Safe unique file. Stage to write to the Dropzone registry
+                # Case D: Safe unique file. Stage to write to the registry
                 print(f"   [NEW ENTRY] Registered -> {relative_path}")
                 new_entries.append((file_hash, relative_path))
 
-    # Perform the structured file movements to 'Excluded/' safely if variations exist
+    # Perform the structured file movements to the excluded folder safely if variations exist
     if excluded_files_log:
         if not os.path.exists(excluded_root_dir):
             try:
                 os.makedirs(excluded_root_dir, exist_ok=True)
             except OSError as e:
-                print(f"❌ Critical Failure: Could not create your base 'Excluded' folder: {e}")
+                print(f"❌ Critical Failure: Could not create the excluded folder: {e}")
                 sys.exit(1)
 
         for source_full_path, rel_path in excluded_files_log:
@@ -165,7 +165,7 @@ def process(dropzone_path, excluded_root_dir, user_name, state_path):
             # Ensure the nested path directories exist before copying over file data
             os.makedirs(destination_parent_dir, exist_ok=True)
 
-            print(f"   [ISOLATING] Excluded -> {rel_path}")
+            print(f"   [EXCLUDING] {rel_path}")
             try:
                 shutil.move(source_full_path, destination_path)
                 moved_files.append(rel_path)
@@ -173,16 +173,16 @@ def process(dropzone_path, excluded_root_dir, user_name, state_path):
                 print(f"   ❌ Error shifting file {rel_path} to backup space: {e}")
                 failed_moves.append(rel_path)
 
-    # Save and commit new unique additions to the Dropzone registry
+    # Save and commit new unique additions to the registry
     # Leave no empty <date> folders behind (the <source> folder is kept)
-    removed_folders = remove_folders(dropzone_path, folders_that_become_empty(dropzone_path, moved_files))
+    removed_folders = remove_folders(upload_path, folders_that_become_empty(upload_path, moved_files))
 
     # The registry is replaced in one step (never appended to), so a run that
     # is cut off can't leave a half-written row behind.
     if new_entries:
         rows = read_checksum_rows(registry_path)
         rows += [(file_hash, rel_path, registered_at, user_name) for file_hash, rel_path in new_entries]
-        if not write_checksum_pairs(registry_path, rows, f"DROPZONE REGISTRY - UPDATED ON {timestamp}"):
+        if not write_checksum_pairs(registry_path, rows, f"REGISTRY - UPDATED ON {timestamp}"):
             print("   Nothing was registered in this run. Run this script again.")
             sys.exit(1)
 
@@ -197,12 +197,12 @@ def process(dropzone_path, excluded_root_dir, user_name, state_path):
     for line in describe_folder_counts(moved_files):
         print(f"     - {line}")
     if failed_moves:
-        print(f" ⚠️  Files NOT moved to Excluded/ (move failed): {len(failed_moves)}")
+        print(f" ⚠️  Files NOT moved to the excluded folder (move failed): {len(failed_moves)}")
         for rel_path in sorted(failed_moves):
             print(f"     - {rel_path}")
-        print("     They are still in Dropzone and were not registered. Run this script again.")
+        print("     They are still in the upload folder and were not registered. Run this script again.")
     if removed_folders:
-        print(f" 🧹 Empty folders removed from Dropzone: {len(removed_folders)}")
+        print(f" 🧹 Empty folders removed from the upload folder: {len(removed_folders)}")
         for rel_folder in removed_folders:
             print(f"     - {rel_folder}{os.sep}")
     if badly_named_files:
@@ -218,16 +218,16 @@ def process(dropzone_path, excluded_root_dir, user_name, state_path):
     if moved_files:
         print(f" 📂 Moved to folder : {current_batch_excluded_dir}")
         print("\n" + "─" * 70)
-        print("  ⚠️  ACTION REQUIRED: Excluded Files Pending Review")
+        print("  ⚠️  ACTION REQUIRED: Excluded files pending review")
         print("─" * 70)
         print(f"  Location: {current_batch_excluded_dir}")
         print("  ")
         print("  Next steps:")
         print("  1. Review excluded files - confirm they should be removed")
         print("  2. If you disagree with exclusion: move to a curated folder")
-        print("     (NOT back to Dropzone/)")
+        print("     (NOT back to the upload folder)")
         print("  3. Delete files when reviewed")
-        print("  4. Session complete when Excluded/ is empty")
+        print("  4. Done when the excluded folder is empty")
         print("=" * 70 + "\n")
     else:
         print("=" * 70 + "\n")

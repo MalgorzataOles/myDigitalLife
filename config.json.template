@@ -1,5 +1,5 @@
 {
-    "dropzone_path": "/path/to/your/storage/Dropzone",
+    "upload_path": "/path/to/your/storage/Upload",
     "excluded_path": "/path/to/your/storage/Excluded",
     "user_name": "CHANGE_ME",
     "log_path": "/path/to/your/storage/Logs",

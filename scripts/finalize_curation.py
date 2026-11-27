@@ -18,6 +18,7 @@ from scripts.common import (
     find_unregistered_files,
     find_conflicted_copies,
     describe_folder_counts,
+    folder_label,
     folders_that_become_empty,
     remove_folders,
     hash_files_in,
@@ -27,7 +28,7 @@ from scripts.common import (
     get_user_name,
     get_log_path,
     get_state_path,
-    legacy_state_files_in_dropzone,
+    legacy_state_files_in_upload,
     run_log,
     pipeline_lock,
     TIMESTAMP_FORMAT,
@@ -62,7 +63,7 @@ def main():
     elif not paths and not (wants_dry_run or wants_commit):
         problem = "Missing the path to the curated session folder and the mode (--dry-run or --commit)."
     elif not paths:
-        problem = "Missing the path to the curated session folder (the Name_Date folder inside Workspace)."
+        problem = "Missing the path to the curated session folder (the folder with Original/ and Sorted/ in it)."
     elif len(paths) > 1:
         problem = (f"Expected one folder path but got {len(paths)}: {' | '.join(paths)}\n"
                    "   If the path contains spaces, put it in quotes.")
@@ -74,8 +75,8 @@ def main():
         print("   Nothing has been changed.")
         print("")
         print("Usage (choose one):")
-        print("  Preview only, changes nothing : python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date --dry-run")
-        print("  Do it for real                : python3 scripts/finalize_curation.py /path/to/Workspace/Name_Date --commit")
+        print("  Preview only, changes nothing : python3 scripts/finalize_curation.py /path/to/session_folder --dry-run")
+        print("  Do it for real                : python3 scripts/finalize_curation.py /path/to/session_folder --commit")
         sys.exit(1)
 
     config = load_configuration()
@@ -98,25 +99,25 @@ def run(is_dry_run, session_path, config, user_name, state_path):
         print(f"❌ Execution Halting: No '{SORTED_DIRNAME}/' folder found inside:\n   '{session_path}'")
         sys.exit(1)
 
-    dropzone_path = config.get("dropzone_path")
+    upload_path = config.get("upload_path")
     excluded_root_dir = config.get("excluded_path")
 
-    if not dropzone_path or not os.path.exists(dropzone_path):
-        print(f"❌ Execution Halting: 'dropzone_path' is invalid or inaccessible:\n   '{dropzone_path}'")
+    if not upload_path or not os.path.exists(upload_path):
+        print(f"❌ Execution Halting: 'upload_path' is invalid or inaccessible:\n   '{upload_path}'")
         sys.exit(1)
     if not excluded_root_dir:
         print("❌ Execution Halting: 'excluded_path' configuration is missing from config.json.")
         sys.exit(1)
 
-    layout_problem = check_folder_layout(dropzone_path, excluded_root_dir, session_path,
+    layout_problem = check_folder_layout(upload_path, excluded_root_dir, session_path,
                                          config.get("log_path"), state_path)
     if layout_problem:
         print(f"❌ Execution Halting: {layout_problem}")
         sys.exit(1)
 
-    leftovers = legacy_state_files_in_dropzone(dropzone_path)
+    leftovers = legacy_state_files_in_upload(upload_path)
     if leftovers:
-        print(f"❌ Execution Halting: {' and '.join(leftovers)} found inside the Dropzone.")
+        print(f"❌ Execution Halting: {' and '.join(leftovers)} found inside the upload folder.")
         print(f"   These files now live in the state folder ({state_path}).")
         print("   Move them there by hand, then run this again. Nothing has been changed.")
         sys.exit(1)
@@ -128,11 +129,11 @@ def run(is_dry_run, session_path, config, user_name, state_path):
         sys.exit(1)
 
     with pipeline_lock(state_path, "finalize_curation.py"):
-        process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
+        process(is_dry_run, session_path, original_path, sorted_path, upload_path,
                 excluded_root_dir, user_name, state_path)
 
 
-def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
+def process(is_dry_run, session_path, original_path, sorted_path, upload_path,
             excluded_root_dir, user_name, state_path):
     print("\n" + "~" * 60)
     if is_dry_run:
@@ -141,18 +142,18 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
         print(" 📸 EXECUTING CURATION FINALIZATION...")
     print("~" * 60)
     print(f" Session folder  : {session_path}")
-    print(f" Dropzone        : {dropzone_path}")
+    print(f" Upload folder   : {upload_path}")
     print(f" Excluded folder : {excluded_root_dir}")
     print("~" * 60 + "\n")
 
     # Step 0a: finalizing only archives files listed in the registry, so a
-    # Dropzone file that was never registered would silently be left behind.
+    # file in the upload folder that was never registered would silently be left behind.
     registry_path = os.path.join(state_path, REGISTRY_FILENAME)
     unregistered = find_unregistered_files(
-        dropzone_path, load_checksum_list(registry_path, is_local_registry=True)
+        upload_path, load_checksum_list(registry_path, is_local_registry=True)
     )
     if unregistered:
-        print("❌ Execution Halting: These Dropzone folders contain files that are not registered yet:")
+        print("❌ Execution Halting: These folders in the upload folder contain files that are not registered yet:")
         for line in describe_folder_counts(unregistered):
             print(f"     - {line}")
         print("\n   Run register_and_exclude.py first, then run this again.")
@@ -218,7 +219,7 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
 
     exclusion_list_path = os.path.join(state_path, EXCLUDE_FILENAME)
 
-    # hash -> every Dropzone-relative path registered under it (usually one,
+    # hash -> every path (relative to the upload folder) registered under it (usually one,
     # but two identical files dumped together in the same run can share a
     # hash - if the content is handled, every physical copy gets archived).
     registry_by_hash = defaultdict(list)
@@ -234,20 +235,20 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
     remaining_registry_records = []
     new_exclusion_records = []
 
-    for file_hash, dropzone_paths in registry_by_hash.items():
+    for file_hash, upload_paths in registry_by_hash.items():
         if file_hash in handled_hashes:
-            for rel_path, _ in dropzone_paths:
-                files_to_move.append((os.path.join(dropzone_path, rel_path), rel_path))
+            for rel_path, _ in upload_paths:
+                files_to_move.append((os.path.join(upload_path, rel_path), rel_path))
             if file_hash not in existing_exclusion_hashes:
                 annotated_path = sorted_hash_to_path.get(file_hash) or original_hash_to_path.get(file_hash)
                 new_exclusion_records.append((file_hash, annotated_path))
         else:
-            for rel_path, extra_columns in dropzone_paths:
+            for rel_path, extra_columns in upload_paths:
                 remaining_registry_records.append((file_hash, rel_path, *extra_columns))
 
-    # Files in Original/ that Dropzone does not know are still "curated after
+    # Files in Original/ that the upload folder does not know are still "curated after
     # all": their hashes go into the ledger so the same content is caught if it
-    # is ever dumped into Dropzone later.
+    # is ever uploaded again later.
     registry_hashes = set(registry_by_hash)
     unmatched_original = sorted(
         rel_path for rel_path, file_hash in original_entries.items() if file_hash not in registry_hashes
@@ -262,7 +263,7 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
     new_exclusion_records += original_only_records
 
     # Everything in Sorted/ is the curated result, including edited versions
-    # of files and files that never came through Dropzone. Recording them means
+    # of files and files that never came through the upload folder. Recording them means
     # the same content is recognized as curated if it is ever uploaded later.
     recorded_hashes = {file_hash for file_hash, _ in new_exclusion_records}
     sorted_only_records = [
@@ -286,7 +287,7 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
             print("   Nothing has been moved. Run this again.")
             sys.exit(1)
 
-    print("\n🚚 Dropzone files " + ("to be moved" if is_dry_run else "being moved") + " to Excluded/:")
+    print("\n🚚 Files " + ("to be moved" if is_dry_run else "being moved") + " from the upload folder to the excluded folder:")
     moved_count = 0
     for source_full_path, rel_path in files_to_move:
         if not os.path.exists(source_full_path):
@@ -294,14 +295,14 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
             continue
         destination_path = os.path.join(current_batch_excluded_dir, rel_path)
         if is_dry_run:
-            print(f"   [WILL MOVE] Dropzone/{rel_path} -> Excluded/curation_{timestamp}/{rel_path}")
+            print(f"   [WILL MOVE] {folder_label(upload_path)}/{rel_path} -> {folder_label(excluded_root_dir)}/curation_{timestamp}/{rel_path}")
         else:
             try:
                 os.makedirs(os.path.dirname(destination_path), exist_ok=True)
                 shutil.move(source_full_path, destination_path)
             except OSError as e:
                 print(f"   ❌ Could not move {rel_path}: {e}")
-                print("\n   Stopped. The files moved so far are safe in Excluded/.")
+                print("\n   Stopped. The files moved so far are safe in the excluded folder.")
                 print("   Fix the problem and run this again - it picks up where it stopped.")
                 sys.exit(1)
             print(f"   [MOVED] -> {rel_path}")
@@ -310,19 +311,19 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
     # Folders emptied by this session (the <source> folder such as Phone1 is kept).
     # Done before the registry rewrite so a re-run after an interruption still
     # knows which folders to look at; files already moved count as gone.
-    emptied_folders = folders_that_become_empty(dropzone_path, [rel for _, rel in files_to_move])
+    emptied_folders = folders_that_become_empty(upload_path, [rel for _, rel in files_to_move])
     if emptied_folders:
-        print("\n🧹 Dropzone folders left empty by this session:")
+        print("\n🧹 Folders in the upload folder left empty by this session:")
         for rel_folder in emptied_folders:
             print(f"   [{'WILL REMOVE' if is_dry_run else 'REMOVED'}] {rel_folder}{os.sep}")
         if not is_dry_run:
-            remove_folders(dropzone_path, emptied_folders)
+            remove_folders(upload_path, emptied_folders)
 
     if not is_dry_run:
         if not write_checksum_pairs(
             registry_path,
             remaining_registry_records,
-            f"DROPZONE REGISTRY - UPDATED ON {datetime.now().strftime(TIMESTAMP_FORMAT)}",
+            f"REGISTRY - UPDATED ON {datetime.now().strftime(TIMESTAMP_FORMAT)}",
         ):
             print("   The files were moved, but the registry was not updated. Run this again.")
             sys.exit(1)
@@ -347,10 +348,10 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
     row("Only in Original/ (not in Sorted/)", only_in_original)
     row("Only in Sorted/ (not in Original/)", only_in_sorted)
     print()
-    row("Dropzone files to be moved to Excluded/" if is_dry_run else "Dropzone files moved to Excluded/", moved_count)
+    row("Files to be moved to the excluded folder" if is_dry_run else "Files moved to the excluded folder", moved_count)
     row(f"New entries added to {EXCLUDE_FILENAME}", len(new_exclusion_records))
     if is_dry_run:
-        row("Remaining entries in Dropzone registry", len(remaining_registry_records))
+        row("Remaining entries in the registry", len(remaining_registry_records))
     print("=" * 70 + "\n")
 
 

@@ -27,17 +27,17 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
     def setUp(self):
         # Create a sandbox directory structure for simulating QNAP mounts
         self.test_dir = tempfile.mkdtemp()
-        self.dropzone_path = os.path.join(self.test_dir, "Dropzone")
+        self.upload_path = os.path.join(self.test_dir, "Upload")
         self.excluded_path = os.path.join(self.test_dir, "Excluded")
         
-        os.makedirs(self.dropzone_path, exist_ok=True)
+        os.makedirs(self.upload_path, exist_ok=True)
         os.makedirs(self.excluded_path, exist_ok=True)
         self.state_path = os.path.join(self.test_dir, "State")
         os.makedirs(self.state_path, exist_ok=True)
 
         # Mock configuration dictionary matching your production config structure
         self.mock_config = {
-            "dropzone_path": self.dropzone_path,
+            "upload_path": self.upload_path,
             "excluded_path": self.excluded_path,
             "user_name": "Tester",
             "log_path": os.path.join(self.test_dir, "Logs"),
@@ -55,7 +55,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
 
     def test_calculate_sha256_valid_file(self):
         """Verifies calculation of a secure file cryptographic hash footprint."""
-        sample_file_path = os.path.join(self.dropzone_path, "test_file.txt")
+        sample_file_path = os.path.join(self.upload_path, "test_file.txt")
         with open(sample_file_path, "wb") as f:
             f.write(self.sample_content)
 
@@ -64,7 +64,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
 
     def test_calculate_sha256_missing_file(self):
         """Ensures that missing files handle OS errors gracefully instead of crashing."""
-        bad_path = os.path.join(self.dropzone_path, "ghost_file.missing")
+        bad_path = os.path.join(self.upload_path, "ghost_file.missing")
         calculated_hash = calculate_sha256(bad_path)
         self.assertIsNone(calculated_hash)
 
@@ -105,16 +105,16 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         with open(exclusion_file_path, "w", encoding="utf-8") as f:
             f.write(f"{self.expected_hash}\tany_old_path/photo.jpg\n")
 
-        # 2. Build structured files inside the target directory dropzone
+        # 2. Build structured files inside the target directory upload
         # File A: A completely new unique file (will be registered)
-        unique_file_dir = os.path.join(self.dropzone_path, "unique_folder")
+        unique_file_dir = os.path.join(self.upload_path, "unique_folder")
         os.makedirs(unique_file_dir, exist_ok=True)
         unique_file_path = os.path.join(unique_file_dir, "unique.txt")
         with open(unique_file_path, "wb") as f:
             f.write(b"completely_different_content_string")
 
         # File B: A duplicate file matching the active exclusion hash (will be moved)
-        nested_duplicate_dir = os.path.join(self.dropzone_path, "abc", "bcd")
+        nested_duplicate_dir = os.path.join(self.upload_path, "abc", "bcd")
         os.makedirs(nested_duplicate_dir, exist_ok=True)
         duplicate_file_path = os.path.join(nested_duplicate_dir, "def.txt")
         with open(duplicate_file_path, "wb") as f:
@@ -125,16 +125,16 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
             main()
 
         # 4. CRITICAL VERIFICATIONS:
-        # Check A: The unique file must remain in place inside Dropzone
+        # Check A: The unique file must remain in place inside Upload
         self.assertTrue(os.path.exists(unique_file_path))
 
-        # Check B: The unique file relative path must be committed to the Dropzone registry
+        # Check B: The unique file relative path must be committed to the Upload registry
         registry_file_path = os.path.join(self.state_path, "registered.sha256")
         self.assertTrue(os.path.exists(registry_file_path))
         registry_data = load_checksum_list(registry_file_path, is_local_registry=True)
         self.assertIn("unique_folder/unique.txt", registry_data)
 
-        # Check C: The excluded duplicate must vanish from the raw Dropzone space
+        # Check C: The excluded duplicate must vanish from the raw Upload space
         self.assertFalse(os.path.exists(duplicate_file_path))
 
         # Check D: The duplicate file structure tree must be preserved inside Excluded/
@@ -156,12 +156,12 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         mock_load_config.return_value = self.mock_config
 
         for name in ("a.jpg", "b.jpg"):
-            path = os.path.join(self.dropzone_path, "Phone1", "2026-09-20", name)
+            path = os.path.join(self.upload_path, "Phone1", "2026-09-20", name)
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "wb") as f:
                 f.write(name.encode())
 
-        unreadable = os.path.join(self.dropzone_path, "SDCard", "2026-09-21", "locked.jpg")
+        unreadable = os.path.join(self.upload_path, "SDCard", "2026-09-21", "locked.jpg")
         os.makedirs(os.path.dirname(unreadable), exist_ok=True)
         with open(unreadable, "wb") as f:
             f.write(b"locked")
@@ -191,7 +191,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
 
         with open(os.path.join(self.state_path, "exclude.sha256"), "w", encoding="utf-8") as f:
             f.write(f"{self.expected_hash}\told/photo.jpg\n")
-        stuck_dir = os.path.join(self.dropzone_path, "Phone1", "2026-09-20")
+        stuck_dir = os.path.join(self.upload_path, "Phone1", "2026-09-20")
         os.makedirs(stuck_dir, exist_ok=True)
         with open(os.path.join(stuck_dir, "stuck.jpg"), "wb") as f:
             f.write(self.sample_content)
@@ -213,7 +213,7 @@ class TestRegisterAndExcludePipeline(unittest.TestCase):
         import re
         from scripts.common import read_checksum_rows
         mock_load_config.return_value = self.mock_config
-        path = os.path.join(self.dropzone_path, "Phone1", "2026-09-20", "a.jpg")
+        path = os.path.join(self.upload_path, "Phone1", "2026-09-20", "a.jpg")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "wb") as f:
             f.write(b"a")
