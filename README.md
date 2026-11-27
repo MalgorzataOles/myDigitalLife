@@ -9,10 +9,12 @@ myDigitalLife is a small, hash-based pipeline for safely curating family file ba
 ```{text}
 myDigitalLife/
   ├── .gitignore                    # Excludes config.json and *.sha256 tracking files
-  ├── config.json.template          # Template for user-specific path settings
-  ├── config.json                   # Local private paths settings (git-ignored)
+  ├── LICENSE
+  ├── README.md
+  ├── config.json.template          # Template for your local settings (folder paths, your name)
+  ├── config.json                   # Your local private settings (git-ignored)
   ├── scripts/
-  │     ├── common.py               # Shared hashing/config helpers and file name constants
+  │     ├── common.py               # Shared helpers, file name constants, run lock and run log
   │     ├── register_and_exclude.py
   │     ├── preview_pending_removal.py
   │     └── finalize_curation.py
@@ -20,7 +22,9 @@ myDigitalLife/
         ├── __init__.py
         ├── test_register_and_exclude.py
         ├── test_preview_pending_removal.py
-        └── test_finalize_curation.py
+        ├── test_finalize_curation.py
+        ├── test_lock.py
+        └── test_workflow.py        # whole workflow, crash/re-run, logs, config checks
 ```
 
 ### Connected Network Storage Layout
