@@ -431,6 +431,24 @@ class TestFinalizeCurationPipeline(unittest.TestCase):
         self.assertIn("Expected one folder path but got 2", output)
         self.assertIn("quotes", output)
 
+    def test_summary_says_how_many_dropzone_files_are_moved(self):
+        for name in ("one.jpg", "two.jpg"):
+            dropzone_file = os.path.join(self.dropzone_path, "Phone1", "20260920", name)
+            self._write(dropzone_file, name.encode())
+            self._write(os.path.join(self.sorted_path, name), name.encode())
+        from scripts.common import calculate_sha256
+        with open(self.registry_path, "w", encoding="utf-8") as f:
+            for name in ("one.jpg", "two.jpg"):
+                path = os.path.join(self.dropzone_path, "Phone1", "20260920", name)
+                f.write(f"{calculate_sha256(path)}\tPhone1/20260920/{name}\n")
+
+        dry_output = self._run_capturing_output(commit=False)
+        self.assertRegex(dry_output, r"Dropzone files to be moved to Excluded/\s*: 2")
+
+        commit_output = self._run_capturing_output(commit=True)
+        self.assertRegex(commit_output, r"Dropzone files moved to Excluded/\s*: 2")
+        self.assertNotIn("matched in this session", commit_output)
+
 
 if __name__ == "__main__":
     unittest.main()

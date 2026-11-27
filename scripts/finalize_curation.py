@@ -286,7 +286,7 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
             print("   Nothing has been moved. Run this again.")
             sys.exit(1)
 
-    print("\n🚚 Files matched by this curation session:")
+    print("\n🚚 Dropzone files " + ("to be moved" if is_dry_run else "being moved") + " to Excluded/:")
     moved_count = 0
     for source_full_path, rel_path in files_to_move:
         if not os.path.exists(source_full_path):
@@ -338,16 +338,19 @@ def process(is_dry_run, session_path, original_path, sorted_path, dropzone_path,
     else:
         print(" CURATION FINALIZATION COMPLETE")
     print("=" * 70)
-    print(f" Files in Original/                     : {len(original_entries)}")
-    print(f" Files in Sorted/                       : {len(sorted_entries)}")
-    print(f" In both Original/ and Sorted/          : {in_both}")
-    print(f" Only in Original/ (not in Sorted/)     : {only_in_original}")
-    print(f" Only in Sorted/ (not in Original/)     : {only_in_sorted}")
+    def row(label, value):
+        print(f" {label:<42}: {value}")
+
+    row("Files in Original/", len(original_entries))
+    row("Files in Sorted/", len(sorted_entries))
+    row("In both Original/ and Sorted/", in_both)
+    row("Only in Original/ (not in Sorted/)", only_in_original)
+    row("Only in Sorted/ (not in Original/)", only_in_sorted)
     print()
-    print(f" Files matched in this session           : {moved_count}")
-    print(f" New entries added to {EXCLUDE_FILENAME:<17}: {len(new_exclusion_records)}")
+    row("Dropzone files to be moved to Excluded/" if is_dry_run else "Dropzone files moved to Excluded/", moved_count)
+    row(f"New entries added to {EXCLUDE_FILENAME}", len(new_exclusion_records))
     if is_dry_run:
-        print(f" Remaining entries in Dropzone registry   : {len(remaining_registry_records)}")
+        row("Remaining entries in Dropzone registry", len(remaining_registry_records))
     print("=" * 70 + "\n")
 
 
